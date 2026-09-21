@@ -15,6 +15,8 @@ The desktop shell is a small Rust application using [`wry`](https://github.com/t
 - GitHub-style Markdown, fenced-code highlighting, and sanitized HTML.
 - Relative local images resolved beside the Markdown file.
 - External HTTP(S) links opened in the system browser.
+- Relative Markdown links open in the current window with Back/Forward history and fragment support.
+- Settings dialog for font family, font size, and update actions.
 - Single portable executable; no installer is required.
 
 ## Automatic updates

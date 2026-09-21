@@ -214,6 +214,52 @@ fn notice_script(message: &str, is_error: bool) -> String {
     )
 }
 
+fn resolve_internal_link(
+    source: &Path,
+    href: &str,
+    cwd: &Path,
+) -> Result<(PathBuf, Option<String>), String> {
+    let decoded = percent_decode_str(href.trim())
+        .decode_utf8_lossy()
+        .into_owned();
+    let (target, fragment) = decoded.split_once('#').unwrap_or((decoded.as_str(), ""));
+    let target = target
+        .split_once('?')
+        .map(|(path, _)| path)
+        .unwrap_or(target);
+    if target.is_empty() {
+        return Err("This link points to the current document.".into());
+    }
+    let is_file_url = target
+        .get(..7)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("file://"));
+    if !is_file_url && (target.contains("://") || target.starts_with("//")) {
+        return Err("Only local Markdown links can be opened in this window.".into());
+    }
+    let candidate = if is_file_url {
+        let mut path = target[7..].to_owned();
+        if path.starts_with('/') && path.chars().nth(2) == Some(':') {
+            path.remove(0);
+        }
+        PathBuf::from(path.replace('/', "\\"))
+    } else {
+        PathBuf::from(target.replace('/', "\\"))
+    };
+    let joined = if candidate.is_absolute() {
+        candidate
+    } else {
+        source.parent().unwrap_or(cwd).join(candidate)
+    };
+    let path = validate_markdown(&joined, cwd)?;
+    let fragment = (!fragment.is_empty()).then(|| fragment.to_owned());
+    Ok((path, fragment))
+}
+
+fn navigate_script(payload: &DocumentPayload, fragment: Option<&str>) -> String {
+    let payload_json = serde_json::to_string(payload).unwrap_or_else(|_| "null".into());
+    let fragment_json = serde_json::to_string(&fragment).unwrap_or_else(|_| "null".into());
+    format!("window.__hostNavigate({payload_json}, {fragment_json})")
+}
 fn updater_config() -> UpdateConfig {
     UpdateConfig::new(UPDATE_REPOSITORY, UPDATE_ASSET, env!("CARGO_PKG_VERSION"))
         .with_app_name("MarkdownViewer")
@@ -403,6 +449,7 @@ fn main() -> wry::Result<()> {
     let mut current_update: Option<UpdateStatus> = None;
     let mut webviews = HashMap::new();
     let mut pending = HashMap::new();
+    let mut current_documents: HashMap<WindowId, PathBuf> = HashMap::new();
     let mut pending_notices: HashMap<WindowId, Vec<String>> = HashMap::new();
     #[cfg(windows)]
     let association_error = register_association().err();
@@ -422,6 +469,9 @@ fn main() -> wry::Result<()> {
     let first_id = window.id();
     webviews.insert(first_id, (window, webview));
     pending.insert(first_id, initial);
+    if let Some(document) = pending.get(&first_id).and_then(|value| value.as_ref()) {
+        current_documents.insert(first_id, PathBuf::from(&document.path));
+    }
     if let Some(error) = initial_error
         .as_ref()
         .or_else(|| rejected.first())
@@ -441,6 +491,7 @@ fn main() -> wry::Result<()> {
             Event::WindowEvent { event: WindowEvent::CloseRequested, window_id, .. } => {
                 webviews.remove(&window_id);
                 pending.remove(&window_id);
+                current_documents.remove(&window_id);
                 pending_notices.remove(&window_id);
                 if webviews.is_empty() { *control_flow = ControlFlow::Exit; }
             }
@@ -448,9 +499,11 @@ fn main() -> wry::Result<()> {
                 for requested in paths {
                     match validate_markdown(&requested, &cwd).and_then(|path| read_document(&path)) {
                         Ok(doc) => {
+                            let document_path = PathBuf::from(&doc.path);
                             if let Ok((window, view)) = create_window(target, proxy.clone(), Some(&doc)) {
                                 let id = window.id();
                                 webviews.insert(id, (window, view));
+                                current_documents.insert(id, document_path);
                                 pending.insert(id, Some(doc));
                             }
                         }
@@ -479,6 +532,29 @@ fn main() -> wry::Result<()> {
                         if let Some(status) = current_update.as_ref() { notify(&mut webviews, id, &update_script(status)); }
                     }
                     Some("external") => { if let Some(url) = parsed.get("url").and_then(|v| v.as_str()) { let _ = open_external(url); } }
+                    Some("internal") => {
+                        let result = (|| -> Result<(DocumentPayload, Option<String>), String> {
+                            let href = parsed.get("href").and_then(|v| v.as_str()).ok_or("Missing local link target.")?;
+                            let source = current_documents.get(&id).cloned().or_else(|| parsed.get("path").and_then(|v| v.as_str()).map(PathBuf::from)).ok_or("The current document path is unavailable.")?;
+                            let (path, fragment) = resolve_internal_link(&source, href, &cwd)?;
+                            Ok((read_document(&path)?, fragment))
+                        })();
+                        match result {
+                            Ok((document, fragment)) => {
+                                current_documents.insert(id, PathBuf::from(&document.path));
+                                notify(&mut webviews, id, &navigate_script(&document, fragment.as_deref()));
+                            }
+                            Err(error) => notify(&mut webviews, id, &notice_script(&error, true)),
+                        }
+                    }
+                    Some("history") => {
+                        if let Some(path) = parsed.get("path").and_then(|v| v.as_str()) {
+                            match validate_markdown(Path::new(path), &cwd) {
+                                Ok(path) => { current_documents.insert(id, path); }
+                                Err(error) => notify(&mut webviews, id, &notice_script(&error, true)),
+                            }
+                        }
+                    }
                     Some("register") => {
                         match register_association() {
                             Ok(()) => notify(&mut webviews, id, "window.__hostNotice('Registered. If double-click still uses another app, choose Markdown Viewer in Windows Default Apps for .md.')"),
@@ -535,6 +611,25 @@ mod tests {
         );
         assert!(validate_markdown(&text, &root).is_err());
         assert!(validate_markdown(&root, &root).is_err());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn resolves_relative_internal_links() {
+        let root =
+            std::env::temp_dir().join(format!("markdown-viewer-links-{}", std::process::id()));
+        let _ = fs::create_dir_all(&root);
+        let source = root.join("index.md");
+        let target = root.join("next.md");
+        fs::write(&source, "# index").unwrap();
+        fs::write(&target, "# next").unwrap();
+
+        let (resolved, fragment) =
+            resolve_internal_link(&source, "./next.md#section", &root).unwrap();
+        assert_eq!(resolved, target.canonicalize().unwrap());
+        assert_eq!(fragment.as_deref(), Some("section"));
+        assert!(resolve_internal_link(&source, "https://example.com/next.md", &root).is_err());
 
         let _ = fs::remove_dir_all(root);
     }

@@ -10,10 +10,13 @@
     <header class="toolbar">
       <div class="brand">Markdown Viewer</div>
       <div class="toolbar-actions">
+        <button id="back-button" type="button" aria-label="Back" title="Back" disabled>←</button>
+        <button id="forward-button" type="button" aria-label="Forward" title="Forward" disabled>→</button>
         <button id="direction-button" type="button" aria-label="Use right-to-left direction" title="Switch document direction">RTL</button>
         <button id="automatic-button" type="button" title="Return to automatic paragraph direction" hidden>Auto</button>
         <button id="association-button" type="button" title="Register this app under Open with for .md files">File association</button>
         <button id="update-button" type="button" title="Check for updates">Check for updates</button>
+        <button id="settings-button" type="button" aria-label="Open settings" title="Settings">⚙</button>
       </div>
     </header>
     <main id="document" class="markdown-body" aria-live="polite">
@@ -22,8 +25,29 @@
         <p>Drop a <code>.md</code> file anywhere in this window, or choose this app in Windows <em>Open with</em>.</p>
       </section>
     </main>
+    <dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-title">
+      <form method="dialog" class="settings-form">
+        <div class="settings-header">
+          <h2 id="settings-title">Settings</h2>
+          <button id="settings-close" type="button" aria-label="Close settings">×</button>
+        </div>
+        <label for="font-select">Font</label>
+        <select id="font-select">
+          <option value="system">System (Segoe UI / Arabic fallback)</option>
+          <option value="segoe">Segoe UI</option>
+          <option value="noto">Noto Sans Arabic</option>
+          <option value="tahoma">Tahoma</option>
+          <option value="consolas">Consolas (monospace)</option>
+        </select>
+        <label for="font-size-input">Font size <output id="font-size-value">16px</output></label>
+        <input id="font-size-input" type="range" min="12" max="32" step="1" value="16" />
+        <div class="settings-divider"></div>
+        <label>Updates</label>
+        <button id="settings-update-button" type="button">Check for updates</button>
+      </form>
+    </dialog>
     <div id="drop-overlay" class="drop-overlay" aria-hidden="true">Drop Markdown files to open them</div>
     <div id="notice" class="notice" role="status" aria-live="polite"></div>
     <script type="module" src="/src/main.js"></script>
   </body>
-</html>
+</html>
