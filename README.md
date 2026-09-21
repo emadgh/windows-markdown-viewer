@@ -17,6 +17,15 @@ The desktop shell is a small Rust application using [`wry`](https://github.com/t
 - External HTTP(S) links opened in the system browser.
 - Single portable executable; no installer is required.
 
+## Automatic updates
+
+On startup, the viewer checks the latest release in [emadgh/windows-markdown-viewer](https://github.com/emadgh/windows-markdown-viewer). If a newer release exists, it downloads the portable executable in the background and verifies its GitHub SHA-256 digest (or the accompanying `.sha256` asset). The toolbar button changes to **Restart for vX.Y.Z** when the update is ready; clicking it closes the current process, replaces the executable, and launches the new version. No update is applied without that restart action.
+
+Each release must publish these assets with the exact names configured in `webview2-viewer/src/main.rs`:
+
+- `markdown-viewer-webview2.exe`
+- `markdown-viewer-webview2.exe.sha256` (the first whitespace-delimited token is the SHA-256 digest)
+
 ## Requirements
 
 - Windows 10 or Windows 11, x64.

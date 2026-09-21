@@ -1,6 +1,6 @@
 [package]
 name = "markdown-viewer-webview2"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 build = "build.rs"
 
@@ -14,3 +14,4 @@ wry = { version = "0.55.1", features = ["protocol"] }
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"
+update-via-github = { git = "https://github.com/emadgh/update-via-github.git", rev = "ec648957782ab800e14ddc6e0a15c694a46f1252" }

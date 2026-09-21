@@ -10,9 +10,11 @@ const documentRoot = document.querySelector("#document");
 const directionButton = document.querySelector("#direction-button");
 const automaticButton = document.querySelector("#automatic-button");
 const associationButton = document.querySelector("#association-button");
+const updateButton = document.querySelector("#update-button");
 const overlay = document.querySelector("#drop-overlay");
 const notice = document.querySelector("#notice");
 let manualDirection = null;
+let updateAction = "check";
 const bootstrap = window.__BOOTSTRAP__ || null;
 const directionBlocks = "p, h1, h2, h3, h4, h5, h6, li, blockquote, td, th, figcaption";
 
@@ -86,6 +88,7 @@ function resolveRelativeImages(documentPath) {
 directionButton.addEventListener("click", () => setDirection(manualDirection === "rtl" ? "ltr" : "rtl"));
 automaticButton.addEventListener("click", () => setDirection(null));
 associationButton.addEventListener("click", () => hostMessage({ type: "register" }));
+updateButton.addEventListener("click", () => hostMessage({ type: `update_${updateAction}` }));
 documentRoot.addEventListener("click", (event) => {
   const link = event.target.closest("a[href]");
   if (!link) return;
@@ -99,5 +102,29 @@ window.__hostDrop = (state, message) => {
 };
 window.__hostNotice = (message, isError = false) => showNotice(message, isError);
 window.__hostLoad = (payload) => { if (payload) renderDocument(payload); };
+window.__hostUpdate = (state) => {
+  if (!state || !state.state) return;
+  updateButton.disabled = false;
+  updateAction = "check";
+  if (state.state === "checking") {
+    updateButton.textContent = "Checking…";
+    updateButton.disabled = true;
+  } else if (state.state === "downloading") {
+    const percent = state.total ? Math.round((state.downloaded / state.total) * 100) : 0;
+    updateButton.textContent = percent ? `Downloading ${percent}%…` : "Downloading…";
+    updateButton.disabled = true;
+  } else if (state.state === "ready") {
+    updateButton.textContent = `Restart for v${state.version}`;
+    updateAction = "apply";
+  } else if (state.state === "available") {
+    updateButton.textContent = `Download v${state.version}`;
+    updateAction = "download";
+  } else if (state.state === "failed") {
+    updateButton.textContent = "Retry update check";
+    updateButton.title = state.message || "Update check failed";
+  } else {
+    updateButton.textContent = "Check for updates";
+  }
+};
 if (bootstrap) renderDocument(bootstrap);
 hostMessage({ type: "ready" });

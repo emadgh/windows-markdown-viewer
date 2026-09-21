@@ -1104,13 +1104,14 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
 name = "markdown-viewer-webview2"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "open",
  "percent-encoding",
  "serde",
  "serde_json",
  "tao",
+ "update-via-github",
  "winreg",
  "wry",
 ]
@@ -2158,6 +2159,17 @@ name = "unicode-segmentation"
 version = "1.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c6f5d3c3b1bf09027a88a6bc961fc00497d651009560b5463668dc81b0fa87a8"
+
+[[package]]
+name = "update-via-github"
+version = "0.1.0"
+source = "git+https://github.com/emadgh/update-via-github.git?rev=ec648957782ab800e14ddc6e0a15c694a46f1252#ec648957782ab800e14ddc6e0a15c694a46f1252"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sha2",
+ "windows-sys 0.61.2",
+]
 
 [[package]]
 name = "url"
