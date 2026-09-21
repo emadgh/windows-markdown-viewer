@@ -1,0 +1,21 @@
+:root { color-scheme: light dark; font-family: "Segoe UI", "Noto Sans Arabic", Tahoma, system-ui, sans-serif; background: #0d1117; overflow-y: scroll; }
+* { box-sizing: border-box; }
+html, body { min-height: 100%; }
+body { margin: 0; min-height: 100vh; overflow-x: hidden; background: Canvas; color: CanvasText; font-family: inherit; }
+.toolbar { min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 18px; border-bottom: 1px solid color-mix(in srgb, CanvasText 16%, transparent); position: sticky; top: 0; background: Canvas; z-index: 2; }
+.brand { font-weight: 700; }
+.toolbar-actions { display: flex; gap: 8px; }
+button { border: 1px solid color-mix(in srgb, CanvasText 25%, transparent); background: color-mix(in srgb, CanvasText 8%, Canvas); color: inherit; border-radius: 6px; padding: 7px 10px; cursor: pointer; }
+button:hover { background: color-mix(in srgb, CanvasText 15%, Canvas); }
+.markdown-body { max-width: 1000px; margin: 0 auto; padding: 42px 30px 80px; min-height: calc(100vh - 52px); background: Canvas; color: CanvasText; }
+.markdown-body[data-manual-direction="true"] { text-align: start; }
+.markdown-body img { max-width: 100%; height: auto; }
+.empty-state { display: grid; place-content: center; min-height: 55vh; text-align: center; color: color-mix(in srgb, CanvasText 72%, Canvas); }
+.empty-state h1 { margin-bottom: 0; }
+.error-state { color: #c83232; }
+.drop-overlay { position: fixed; inset: 0; display: none; place-content: center; z-index: 10; border: 5px dashed #3b82f6; background: color-mix(in srgb, #3b82f6 20%, Canvas); color: CanvasText; font-size: 1.4rem; font-weight: 700; pointer-events: none; }
+.drop-overlay.active { display: grid; }
+.notice { position: fixed; bottom: 24px; left: 50%; transform: translate(-50%, 20px); opacity: 0; max-width: min(620px, calc(100vw - 32px)); padding: 11px 14px; border-radius: 8px; color: white; background: #176a3a; transition: opacity .15s, transform .15s; z-index: 20; }
+.notice.error { background: #a32929; }
+.notice.visible { opacity: 1; transform: translate(-50%, 0); }
+@media (max-width: 600px) { .toolbar { padding-inline: 10px; } .brand { display: none; } .toolbar-actions { width: 100%; justify-content: flex-end; } .markdown-body { padding: 24px 16px 48px; } }

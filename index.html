@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Markdown Viewer</title>
+    <script>window.__BOOTSTRAP__ = __INITIAL_STATE__;</script>
+  </head>
+  <body>
+    <header class="toolbar">
+      <div class="brand">Markdown Viewer</div>
+      <div class="toolbar-actions">
+        <button id="direction-button" type="button" aria-label="Use right-to-left direction" title="Switch document direction">RTL</button>
+        <button id="automatic-button" type="button" title="Return to automatic paragraph direction" hidden>Auto</button>
+        <button id="association-button" type="button" title="Register this app under Open with for .md files">File association</button>
+      </div>
+    </header>
+    <main id="document" class="markdown-body" aria-live="polite">
+      <section id="empty-state" class="empty-state">
+        <h1>Open a Markdown file</h1>
+        <p>Drop a <code>.md</code> file anywhere in this window, or choose this app in Windows <em>Open with</em>.</p>
+      </section>
+    </main>
+    <div id="drop-overlay" class="drop-overlay" aria-hidden="true">Drop Markdown files to open them</div>
+    <div id="notice" class="notice" role="status" aria-live="polite"></div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,20 @@
+{
+  "name": "windows-markdown-viewer",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:webview": "vite build && node scripts/inline-dist.mjs",
+    "test": "node --test",
+    "build:portable": "cargo build --release --manifest-path webview2-viewer/Cargo.toml"
+  },
+  "dependencies": {
+    "dompurify": "^3.2.6",
+    "github-markdown-css": "^5.8.1",
+    "highlight.js": "^11.11.1",
+    "marked": "^15.0.12"
+  },
+  "devDependencies": { "vite": "^6.2.0" }
+}

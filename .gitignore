@@ -1,0 +1,6 @@
+node_modules/
+dist/
+webview2-viewer/target/
+*.pdb
+*.log
+.DS_Store
