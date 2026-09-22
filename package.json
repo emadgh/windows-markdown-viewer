@@ -1,7 +1,7 @@
 {
   "name": "windows-markdown-viewer",
   "private": true,
-  "version": "0.4.0",
+  "version": "0.4.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,6 +11,7 @@
     "build:portable": "cargo build --release --manifest-path webview2-viewer/Cargo.toml"
   },
   "dependencies": {
+    "@fontsource/vazirmatn": "^5.3.0",
     "dompurify": "^3.2.6",
     "github-markdown-css": "^5.8.1",
     "highlight.js": "^11.11.1",

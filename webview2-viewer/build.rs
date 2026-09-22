@@ -1,7 +1,7 @@
 use std::{
-    env, fs,
+    env,
     fmt::Write as FmtWrite,
-    io,
+    fs, io,
     path::{Path, PathBuf},
     process::Command,
 };

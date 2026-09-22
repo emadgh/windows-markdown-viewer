@@ -4,7 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Markdown Viewer</title>
-    <script>window.__BOOTSTRAP__ = __INITIAL_STATE__;</script>
+    <script>
+      window.__BOOTSTRAP__ = __INITIAL_STATE__;
+      window.__APP_VERSION__ = "__APP_VERSION__";
+    </script>
   </head>
   <body>
     <header class="toolbar">
@@ -13,10 +16,10 @@
         <button id="back-button" type="button" aria-label="Back" title="Back" disabled>←</button>
         <button id="forward-button" type="button" aria-label="Forward" title="Forward" disabled>→</button>
         <button id="print-button" type="button" aria-label="Print document" title="Print document">Print</button>
+        <button id="edit-button" type="button" aria-label="Edit document" title="Open document in an editor" disabled>Edit</button>
         <button id="direction-button" type="button" aria-label="Use right-to-left direction" title="Switch document direction">RTL</button>
         <button id="automatic-button" type="button" title="Return to automatic paragraph direction" hidden>Auto</button>
-        <button id="association-button" type="button" title="Register this app under Open with for .md files">File association</button>
-        <button id="update-button" type="button" title="Check for updates">Check for updates</button>
+        <button id="update-button" type="button" title="Update available" hidden>Update</button>
         <button id="settings-button" type="button" aria-label="Open settings" title="Settings">⚙</button>
       </div>
     </header>
@@ -34,7 +37,8 @@
         </div>
         <label for="font-select">Font</label>
         <select id="font-select">
-          <option value="system">System (Segoe UI / Arabic fallback)</option>
+          <option value="system">Vazirmatn + system fallback (recommended)</option>
+          <option value="vazir">Vazirmatn (embedded Persian)</option>
           <option value="segoe">Segoe UI</option>
           <option value="noto">Noto Sans Arabic</option>
           <option value="tahoma">Tahoma</option>
@@ -42,6 +46,15 @@
         </select>
         <label for="font-size-input">Font size <output id="font-size-value">16px</output></label>
         <input id="font-size-input" type="range" min="12" max="32" step="1" value="16" />
+        <div class="settings-divider"></div>
+        <label>File association</label>
+        <button id="settings-association-button" type="button">Set as default .md file viewer</button>
+        <p class="settings-help">Registers Markdown Viewer for <code>.md</code> files. Windows may still require confirmation in Default apps.</p>
+        <div class="settings-divider"></div>
+        <div class="settings-about">
+          <div><span>Version</span><strong id="app-version">—</strong></div>
+          <div><span>GitHub</span><a id="github-link" href="https://github.com/emadgh/windows-markdown-viewer" rel="noreferrer">github.com/emadgh/windows-markdown-viewer</a></div>
+        </div>
         <div class="settings-divider"></div>
         <label>Updates</label>
         <button id="settings-update-button" type="button">Check for updates</button>

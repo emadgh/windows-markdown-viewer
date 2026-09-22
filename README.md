@@ -12,15 +12,20 @@ The desktop shell is a small Rust application using [`wry`](https://github.com/t
 - Fixed toolbar stays visible while scrolling.
 - Automatic paragraph direction using Unicode bidirectional classification.
 - Manual RTL/LTR direction controls with an Auto reset button.
-- Correct Persian/Arabic/Unicode rendering through WebView2 system fonts.
+- Embedded Vazirmatn Persian/Arabic font with system fallbacks for reliable Unicode rendering.
 - GitHub-style Markdown, fenced-code highlighting, and sanitized HTML.
 - Mermaid code fences using the `mermaid` language are rendered as SVG with strict security.
 - Relative local images resolved beside the Markdown file.
 - External HTTP(S) links opened in the system browser.
 - Relative Markdown links and Obsidian wiki links (`[[Note]]`, aliases, headings) open in the current window with Back/Forward history.
-- Settings dialog for font family, font size, and update actions.
+- Settings dialog for font family, font size, file association, and update actions.
 - Print the current Markdown document with a print-optimized layout.
+- Edit the current document with VS Code when available, or the Windows Notepad fallback.
 - Single portable executable; no installer is required.
+
+## Version 0.4.1
+
+This release embeds the Vazirmatn Persian font and includes the latest editor, file-association, and drag-and-drop improvements.
 
 ## Version 0.4.0
 
@@ -74,7 +79,7 @@ You can also drop one or more `.md` files onto any viewer window. A second launc
 
 ## File association
 
-The app registers a per-user `MarkdownViewer.md` ProgID when it starts and from the **File association** button. Windows may protect an existing default-app choice. If double-click still opens another application, use:
+The app registers a per-user `MarkdownViewer.md` ProgID when it starts and from the **Set as default .md file viewer** button in Settings. Windows may protect an existing default-app choice. If double-click still opens another application, use:
 
 **Settings → Apps → Default apps → Choose defaults by file type → `.md`**
 

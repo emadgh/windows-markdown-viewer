@@ -1,4 +1,6 @@
 import "github-markdown-css/github-markdown.css";
+import "@fontsource/vazirmatn/400.css";
+import "@fontsource/vazirmatn/700.css";
 import "highlight.js/styles/github-dark.css";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
@@ -12,18 +14,21 @@ const documentRoot = document.querySelector("#document");
 const toolbar = document.querySelector(".toolbar");
 const directionButton = document.querySelector("#direction-button");
 const automaticButton = document.querySelector("#automatic-button");
-const associationButton = document.querySelector("#association-button");
+const settingsAssociationButton = document.querySelector("#settings-association-button");
 const updateButton = document.querySelector("#update-button");
 const settingsButton = document.querySelector("#settings-button");
 const settingsDialog = document.querySelector("#settings-dialog");
 const settingsClose = document.querySelector("#settings-close");
 const settingsUpdateButton = document.querySelector("#settings-update-button");
+const appVersionElement = document.querySelector("#app-version");
+const githubLink = document.querySelector("#github-link");
 const fontSelect = document.querySelector("#font-select");
 const fontSizeInput = document.querySelector("#font-size-input");
 const fontSizeValue = document.querySelector("#font-size-value");
 const backButton = document.querySelector("#back-button");
 const forwardButton = document.querySelector("#forward-button");
 const printButton = document.querySelector("#print-button");
+const editButton = document.querySelector("#edit-button");
 const overlay = document.querySelector("#drop-overlay");
 const notice = document.querySelector("#notice");
 let manualDirection = null;
@@ -33,17 +38,25 @@ let currentPayload = null;
 const backStack = [];
 const forwardStack = [];
 const bootstrap = window.__BOOTSTRAP__ || null;
+const APP_VERSION = typeof window.__APP_VERSION__ === "string" && window.__APP_VERSION__ !== "__APP_VERSION__"
+  ? window.__APP_VERSION__
+  : "dev";
+const GITHUB_URL = "https://github.com/emadgh/windows-markdown-viewer";
 const directionBlocks = "p, h1, h2, h3, h4, h5, h6, li, blockquote, td, th, figcaption";
 const FONT_PRESETS = {
-  system: '"Segoe UI", "Noto Sans Arabic", Tahoma, sans-serif',
-  segoe: '"Segoe UI", sans-serif',
-  noto: '"Noto Sans Arabic", "Segoe UI", Tahoma, sans-serif',
-  tahoma: 'Tahoma, "Noto Sans Arabic", sans-serif',
-  consolas: 'Consolas, "Cascadia Mono", monospace',
+  system: '"Vazirmatn", "Segoe UI", "Noto Sans Arabic", Tahoma, sans-serif',
+  vazir: '"Vazirmatn", "Segoe UI", "Noto Sans Arabic", Tahoma, sans-serif',
+  segoe: '"Segoe UI", "Vazirmatn", sans-serif',
+  noto: '"Noto Sans Arabic", "Vazirmatn", "Segoe UI", Tahoma, sans-serif',
+  tahoma: 'Tahoma, "Vazirmatn", "Noto Sans Arabic", sans-serif',
+  consolas: 'Consolas, "Cascadia Mono", "Vazirmatn", monospace',
 };
 
 marked.setOptions({ gfm: true, breaks: false });
 mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "default" });
+document.title = `Markdown Viewer v${APP_VERSION}`;
+document.querySelector(".brand").textContent = `Markdown Viewer v${APP_VERSION}`;
+appVersionElement.textContent = `v${APP_VERSION}`;
 marked.use({ renderer: { code({ text, lang }) {
   const normalizedLanguage = (lang || "").trim().toLowerCase();
   const escaped = text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
@@ -129,7 +142,7 @@ function renderDocument(payload, { scrollTop = 0, fragment = null } = {}) {
   delete documentRoot.dataset.manualDirection;
   applyAutomaticDirection(documentRoot);
   setDirection(null);
-  document.title = `${payload.name} — Markdown Viewer`;
+  document.title = `${payload.name} — Markdown Viewer v${APP_VERSION}`;
   resolveRelativeImages(payload.path);
   renderMermaidDiagrams();
   window.requestAnimationFrame(() => {
@@ -157,6 +170,9 @@ function resolveRelativeImages(documentPath) {
     image.addEventListener("error", () => showNotice(`Could not load local image: ${source}`, true), { once: true });
   }
 }
+function updateEditButton() {
+  editButton.disabled = !currentPayload?.path;
+}
 function updateHistoryButtons() {
   backButton.disabled = backStack.length === 0;
   forwardButton.disabled = forwardStack.length === 0;
@@ -170,6 +186,7 @@ function showPayload(payload, { record = true, fragment = null, scrollTop = 0 } 
     forwardStack.length = 0;
   }
   currentPayload = payload;
+  updateEditButton();
   renderDocument(payload, { fragment, scrollTop });
   updateHistoryButtons();
 }
@@ -217,11 +234,19 @@ function saveViewerSettings() {
     localStorage.setItem("markdown-viewer.font-size", fontSizeInput.value);
   } catch { /* Keep the setting active for this window. */ }
 }
+function showFirstRunAssociationPrompt() {
+  try {
+    if (localStorage.getItem("markdown-viewer.association-prompt-shown")) return;
+    localStorage.setItem("markdown-viewer.association-prompt-shown", "true");
+  } catch { /* Continue with the prompt if storage is unavailable. */ }
+  window.setTimeout(() => showNotice("Set as default .md file viewer. Open Settings to register it."), 450);
+}
 function closeSettings() {
   if (settingsDialog.open) settingsDialog.close();
 }
 function setUpdateControls(state) {
   if (!state || !state.state) return;
+  updateButton.hidden = !["available", "downloading", "ready"].includes(state.state);
   updateButton.disabled = false;
   settingsUpdateButton.disabled = false;
   updateAction = "check";
@@ -251,14 +276,16 @@ function setUpdateControls(state) {
 
 directionButton.addEventListener("click", () => setDirection(manualDirection === "rtl" ? "ltr" : "rtl"));
 automaticButton.addEventListener("click", () => setDirection(null));
-associationButton.addEventListener("click", () => hostMessage({ type: "register" }));
+settingsAssociationButton.addEventListener("click", () => hostMessage({ type: "register" }));
 updateButton.addEventListener("click", () => hostMessage({ type: `update_${updateAction}` }));
 settingsUpdateButton.addEventListener("click", () => updateButton.click());
 backButton.addEventListener("click", goBack);
 forwardButton.addEventListener("click", goForward);
 printButton.addEventListener("click", () => window.print());
+editButton.addEventListener("click", () => { if (currentPayload?.path) hostMessage({ type: "edit", path: currentPayload.path }); });
 settingsButton.addEventListener("click", () => settingsDialog.showModal());
 settingsClose.addEventListener("click", closeSettings);
+githubLink.addEventListener("click", (event) => { event.preventDefault(); hostMessage({ type: "external", url: GITHUB_URL }); });
 settingsDialog.addEventListener("click", (event) => { if (event.target === settingsDialog) closeSettings(); });
 fontSelect.addEventListener("change", () => { applyViewerSettings(fontSelect.value, fontSizeInput.value); saveViewerSettings(); });
 fontSizeInput.addEventListener("input", () => { applyViewerSettings(fontSelect.value, fontSizeInput.value); saveViewerSettings(); });
@@ -303,5 +330,6 @@ window.__hostNavigate = (payload, fragment = null) => { if (payload) showPayload
 window.__hostUpdate = setUpdateControls;
 loadViewerSettings();
 updateHistoryButtons();
+showFirstRunAssociationPrompt();
 if (bootstrap) window.__hostLoad(bootstrap);
 hostMessage({ type: "ready" });

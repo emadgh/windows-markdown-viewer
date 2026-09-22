@@ -3,6 +3,8 @@
 use open::that as open_external;
 use percent_encoding::percent_decode_str;
 use serde::Serialize;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
 use std::{
     borrow::Cow,
     collections::HashMap,
@@ -10,6 +12,7 @@ use std::{
     io::{Read, Write},
     net::{TcpListener, TcpStream},
     path::{Path, PathBuf},
+    process::Command,
     thread,
     time::Duration,
 };
@@ -19,6 +22,7 @@ use tao::{
     window::{Window, WindowBuilder, WindowId},
 };
 use update_via_github::{UpdateConfig, UpdateManager, UpdateStatus};
+
 use wry::{
     http::{header::CONTENT_TYPE, Request, Response},
     DragDropEvent, WebView, WebViewBuilder,
@@ -45,6 +49,7 @@ struct DocumentPayload {
 #[derive(Debug)]
 enum UserEvent {
     Open(Vec<PathBuf>),
+    Load(WindowId, PathBuf),
     Drop(WindowId, DropState),
     Ipc(WindowId, String),
     Update(UpdateStatus),
@@ -117,7 +122,11 @@ fn app_response(request: &Request<Vec<u8>>) -> Response<Cow<'static, [u8]>> {
             .unwrap();
     };
     if path == "/index.html" {
-        let html = String::from_utf8_lossy(bytes).replace("__INITIAL_STATE__", "null");
+        let version_json =
+            serde_json::to_string(env!("CARGO_PKG_VERSION")).unwrap_or_else(|_| "\"dev\"".into());
+        let html = String::from_utf8_lossy(bytes)
+            .replace("__INITIAL_STATE__", "null")
+            .replace("\"__APP_VERSION__\"", &version_json);
         Response::builder()
             .header(CONTENT_TYPE, mime)
             .body(Cow::Owned(html.into_bytes()))
@@ -333,6 +342,17 @@ fn navigate_script(payload: &DocumentPayload, fragment: Option<&str>) -> String 
     let fragment_json = serde_json::to_string(&fragment).unwrap_or_else(|_| "null".into());
     format!("window.__hostNavigate({payload_json}, {fragment_json})")
 }
+fn window_title(payload: Option<&DocumentPayload>) -> String {
+    payload
+        .map(|p| {
+            format!(
+                "{} — Markdown Viewer v{}",
+                p.name,
+                env!("CARGO_PKG_VERSION")
+            )
+        })
+        .unwrap_or_else(|| format!("Markdown Viewer v{}", env!("CARGO_PKG_VERSION")))
+}
 fn updater_config() -> UpdateConfig {
     UpdateConfig::new(UPDATE_REPOSITORY, UPDATE_ASSET, env!("CARGO_PKG_VERSION"))
         .with_app_name("MarkdownViewer")
@@ -415,9 +435,7 @@ fn create_window(
     proxy: EventLoopProxy<UserEvent>,
     payload: Option<&DocumentPayload>,
 ) -> wry::Result<(Window, WebView)> {
-    let title = payload
-        .map(|p| format!("{} — Markdown Viewer", p.name))
-        .unwrap_or_else(|| "Markdown Viewer".into());
+    let title = window_title(payload);
     let window = WindowBuilder::new()
         .with_title(title)
         .with_inner_size(tao::dpi::LogicalSize::new(1100.0, 800.0))
@@ -447,6 +465,34 @@ fn create_window(
         });
     let webview = builder.build(&window)?;
     Ok((window, webview))
+}
+fn open_in_editor(path: &Path) -> Result<(), String> {
+    let mut candidates = Vec::new();
+    if let Ok(editor) = std::env::var("VISUAL").or_else(|_| std::env::var("EDITOR")) {
+        if !editor.trim().is_empty() {
+            candidates.push(editor);
+        }
+    }
+    #[cfg(windows)]
+    candidates.extend([
+        "code.cmd".to_owned(),
+        "code".to_owned(),
+        "notepad.exe".to_owned(),
+    ]);
+    #[cfg(not(windows))]
+    candidates.extend(["code".to_owned(), "nano".to_owned()]);
+    for candidate in candidates {
+        let mut command = Command::new(&candidate);
+        command.arg(path);
+        #[cfg(windows)]
+        command.creation_flags(0x08000000);
+        match command.spawn() {
+            Ok(_) => return Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(format!("Could not start editor {candidate}: {error}")),
+        }
+    }
+    Err("No editor was found. Install VS Code or set the EDITOR environment variable.".into())
 }
 fn register_association() -> Result<(), String> {
     #[cfg(windows)]
@@ -497,6 +543,25 @@ fn notify(webviews: &mut HashMap<WindowId, (Window, WebView)>, id: WindowId, scr
     }
 }
 
+fn load_document_in_window(
+    webviews: &mut HashMap<WindowId, (Window, WebView)>,
+    current_documents: &mut HashMap<WindowId, PathBuf>,
+    id: WindowId,
+    requested: &Path,
+    cwd: &Path,
+) -> Result<(), String> {
+    let document = validate_markdown(requested, cwd).and_then(|path| read_document(&path))?;
+    if !webviews.contains_key(&id) {
+        return Err("The target window is no longer available.".into());
+    }
+    current_documents.insert(id, PathBuf::from(&document.path));
+    if let Some((window, _)) = webviews.get(&id) {
+        window.set_title(&window_title(Some(&document)));
+    }
+    let json = serde_json::to_string(&document).map_err(|error| error.to_string())?;
+    notify(webviews, id, &format!("window.__hostLoad({json})"));
+    Ok(())
+}
 fn main() -> wry::Result<()> {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let requested: Vec<PathBuf> = std::env::args_os().skip(1).map(PathBuf::from).collect();
@@ -587,13 +652,23 @@ fn main() -> wry::Result<()> {
                     }
                 }
             }
+            Event::UserEvent(UserEvent::Load(id, path)) => {
+                if let Err(error) = load_document_in_window(&mut webviews, &mut current_documents, id, &path, &cwd) {
+                    notify(&mut webviews, id, &notice_script(&error, true));
+                }
+            }
             Event::UserEvent(UserEvent::Drop(id, DropState::Enter)) => notify(&mut webviews, id, "window.__hostDrop('enter')"),
             Event::UserEvent(UserEvent::Drop(id, DropState::Leave)) => notify(&mut webviews, id, "window.__hostDrop('leave')"),
             Event::UserEvent(UserEvent::Drop(id, DropState::Drop(paths))) => {
                 notify(&mut webviews, id, "window.__hostDrop('leave')");
-                let valid: Vec<_> = paths.into_iter().filter_map(|p| validate_markdown(&p, &cwd).ok()).collect();
-                if valid.is_empty() { notify(&mut webviews, id, "window.__hostDrop('reject', 'Only .md files are supported.')"); }
-                else { let _ = proxy.send_event(UserEvent::Open(valid)); }
+                let mut valid: Vec<_> = paths.into_iter().filter_map(|p| validate_markdown(&p, &cwd).ok()).collect();
+                if valid.is_empty() {
+                    notify(&mut webviews, id, "window.__hostDrop('reject', 'Only .md files are supported.')");
+                } else {
+                    let first = valid.remove(0);
+                    let _ = proxy.send_event(UserEvent::Load(id, first));
+                    if !valid.is_empty() { let _ = proxy.send_event(UserEvent::Open(valid)); }
+                }
             }
             Event::UserEvent(UserEvent::Ipc(id, message)) => {
                 let parsed: serde_json::Value = serde_json::from_str(&message).unwrap_or_default();
@@ -617,6 +692,7 @@ fn main() -> wry::Result<()> {
                         match result {
                             Ok((document, fragment)) => {
                                 current_documents.insert(id, PathBuf::from(&document.path));
+                                if let Some((window, _)) = webviews.get(&id) { window.set_title(&window_title(Some(&document))); }
                                 notify(&mut webviews, id, &navigate_script(&document, fragment.as_deref()));
                             }
                             Err(error) => notify(&mut webviews, id, &notice_script(&error, true)),
@@ -624,10 +700,25 @@ fn main() -> wry::Result<()> {
                     }
                     Some("history") => {
                         if let Some(path) = parsed.get("path").and_then(|v| v.as_str()) {
-                            match validate_markdown(Path::new(path), &cwd) {
-                                Ok(path) => { current_documents.insert(id, path); }
+                            match validate_markdown(Path::new(path), &cwd).and_then(|path| read_document(&path)) {
+                                Ok(document) => {
+                                    current_documents.insert(id, PathBuf::from(&document.path));
+                                    if let Some((window, _)) = webviews.get(&id) { window.set_title(&window_title(Some(&document))); }
+                                }
                                 Err(error) => notify(&mut webviews, id, &notice_script(&error, true)),
                             }
+                        }
+                    }
+                    Some("edit") => {
+                        let result = parsed
+                            .get("path")
+                            .and_then(|value| value.as_str())
+                            .ok_or_else(|| "The current document path is unavailable.".to_owned())
+                            .and_then(|path| validate_markdown(Path::new(path), &cwd))
+                            .and_then(|path| open_in_editor(&path));
+                        match result {
+                            Ok(()) => notify(&mut webviews, id, "Opened the document in the editor."),
+                            Err(error) => notify(&mut webviews, id, &notice_script(&format!("Could not open an editor: {error}"), true)),
                         }
                     }
                     Some("register") => {
