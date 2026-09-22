@@ -1,17 +1,17 @@
-:root { color-scheme: light dark; --viewer-font: "Segoe UI", "Noto Sans Arabic", Tahoma, system-ui, sans-serif; --viewer-font-size: 16px; font-family: var(--viewer-font); background: #0d1117; overflow-y: scroll; }
+:root { color-scheme: light dark; --viewer-font: "Segoe UI", "Noto Sans Arabic", Tahoma, system-ui, sans-serif; --viewer-font-size: 16px; --toolbar-height: 52px; font-family: var(--viewer-font); background: #0d1117; overflow-y: scroll; }
 * { box-sizing: border-box; }
 html, body { min-height: 100%; }
-body { margin: 0; min-height: 100vh; overflow-x: hidden; background: Canvas; color: CanvasText; font-family: var(--viewer-font); }
-.toolbar { min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 18px; border-bottom: 1px solid color-mix(in srgb, CanvasText 16%, transparent); position: sticky; top: 0; background: Canvas; z-index: 2; }
+body { margin: 0; min-height: 100vh; padding-top: var(--toolbar-height); overflow-x: hidden; background: Canvas; color: CanvasText; font-family: var(--viewer-font); }
+.toolbar { min-height: 52px; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 18px; border-bottom: 1px solid color-mix(in srgb, CanvasText 16%, transparent); position: fixed; top: 0; left: 0; right: 0; width: 100%; background: Canvas; z-index: 12; box-shadow: 0 1px 8px rgb(0 0 0 / 16%); }
 .brand { font-weight: 700; white-space: nowrap; }
 .toolbar-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 button, select, input { font: inherit; }
 button { border: 1px solid color-mix(in srgb, CanvasText 25%, transparent); background: color-mix(in srgb, CanvasText 8%, Canvas); color: inherit; border-radius: 6px; padding: 7px 10px; cursor: pointer; }
 button:hover:not(:disabled) { background: color-mix(in srgb, CanvasText 15%, Canvas); }
 button:disabled { cursor: default; opacity: .55; }
-.markdown-body { max-width: 1000px; margin: 0 auto; padding: 42px 30px 80px; min-height: calc(100vh - 52px); background: Canvas; color: CanvasText; font-family: var(--viewer-font); font-size: var(--viewer-font-size); }
+.markdown-body { max-width: 1000px; margin: 0 auto; padding: 42px 30px 80px; min-height: calc(100vh - var(--toolbar-height)); background: Canvas; color: CanvasText; font-family: var(--viewer-font); font-size: var(--viewer-font-size); }
 .markdown-body[data-manual-direction="true"] { text-align: start; }
-.markdown-body img { max-width: 100%; height: auto; }
+.markdown-body img { max-width: 100%; height: auto; } .markdown-body .mermaid { margin: 1.5rem 0; padding: 1rem; overflow-x: auto; text-align: center; border: 1px solid color-mix(in srgb, CanvasText 12%, transparent); border-radius: 8px; background: color-mix(in srgb, CanvasText 3%, Canvas); } .markdown-body .mermaid svg { max-width: 100%; height: auto; } .markdown-body .mermaid-error { color: #c83232; text-align: start; white-space: pre-wrap; }
 .empty-state { display: grid; place-content: center; min-height: 55vh; text-align: center; color: color-mix(in srgb, CanvasText 72%, Canvas); }
 .empty-state h1 { margin-bottom: 0; }
 .error-state { color: #c83232; }
@@ -31,4 +31,12 @@ button:disabled { cursor: default; opacity: .55; }
 .notice { position: fixed; bottom: 24px; left: 50%; transform: translate(-50%, 20px); opacity: 0; max-width: min(620px, calc(100vw - 32px)); padding: 11px 14px; border-radius: 8px; color: white; background: #176a3a; transition: opacity .15s, transform .15s; z-index: 20; }
 .notice.error { background: #a32929; }
 .notice.visible { opacity: 1; transform: translate(-50%, 0); }
-@media (max-width: 700px) { .toolbar { align-items: flex-start; } .brand { display: none; } .toolbar-actions { width: 100%; } .markdown-body { padding: 24px 16px 48px; } }
+@media (max-width: 700px) { .toolbar { align-items: flex-start; } .brand { display: none; } .toolbar-actions { width: 100%; } .markdown-body { padding: 24px 16px 48px; } }
+@media print {
+  :root { color-scheme: light; overflow: visible; }
+  html, body { min-height: auto; padding-top: 0; overflow: visible; background: #fff; color: #000; }
+  .toolbar, .drop-overlay, .notice { display: none !important; }
+  .markdown-body { max-width: none; min-height: 0; margin: 0; padding: 0; background: #fff; color: #000; }
+  .markdown-body .mermaid { break-inside: avoid; border-color: #ddd; background: #fff; }
+  pre, blockquote, table, img { break-inside: avoid; }
+}

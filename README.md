@@ -9,15 +9,22 @@ The desktop shell is a small Rust application using [`wry`](https://github.com/t
 - Open `.md` files from the command line, Windows **Open with**, or double-click.
 - Forward launches to the existing process while opening each document in its own window.
 - Drag and drop Markdown files anywhere in the window.
+- Fixed toolbar stays visible while scrolling.
 - Automatic paragraph direction using Unicode bidirectional classification.
 - Manual RTL/LTR direction controls with an Auto reset button.
 - Correct Persian/Arabic/Unicode rendering through WebView2 system fonts.
 - GitHub-style Markdown, fenced-code highlighting, and sanitized HTML.
+- Mermaid code fences using the `mermaid` language are rendered as SVG with strict security.
 - Relative local images resolved beside the Markdown file.
 - External HTTP(S) links opened in the system browser.
-- Relative Markdown links open in the current window with Back/Forward history and fragment support.
+- Relative Markdown links and Obsidian wiki links (`[[Note]]`, aliases, headings) open in the current window with Back/Forward history.
 - Settings dialog for font family, font size, and update actions.
+- Print the current Markdown document with a print-optimized layout.
 - Single portable executable; no installer is required.
+
+## Version 0.4.0
+
+This release adds Mermaid diagrams, Obsidian wiki-link navigation, print support, a fixed toolbar, and a WebView2 startup fix that avoids oversized inline HTML while keeping the portable single-executable distribution.
 
 ## Automatic updates
 
@@ -47,7 +54,7 @@ The executable is written to:
 webview2-viewer\target\release\markdown-viewer-webview2.exe
 ```
 
-The build script compiles the Vite frontend, inlines its JavaScript/CSS into the HTML shell, and embeds that HTML into the Rust executable. The `dist/` and Cargo `target/` directories are generated and intentionally ignored by Git.
+The build script compiles the Vite frontend and embeds the HTML, JavaScript, CSS, and supporting assets into the Rust executable. The `dist/` and Cargo `target/` directories are generated and intentionally ignored by Git.
 
 ## Run
 

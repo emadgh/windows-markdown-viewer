@@ -33,6 +33,8 @@ const UPDATE_REPOSITORY: &str = "emadgh/windows-markdown-viewer";
 const UPDATE_ASSET: &str = "markdown-viewer-webview2.exe";
 const UPDATE_CHECKSUM: &str = "markdown-viewer-webview2.exe.sha256";
 
+include!(concat!(env!("OUT_DIR"), "/embedded_assets.rs"));
+
 #[derive(Debug, Clone, Serialize)]
 struct DocumentPayload {
     path: String,
@@ -100,6 +102,32 @@ fn bootstrap_html(payload: Option<&DocumentPayload>) -> String {
         .replace('>', "\\u003e")
         .replace('&', "\\u0026");
     HTML.replace("__INITIAL_STATE__", &json)
+}
+fn app_response(request: &Request<Vec<u8>>) -> Response<Cow<'static, [u8]>> {
+    let path = if request.uri().path() == "/" {
+        "/index.html"
+    } else {
+        request.uri().path()
+    };
+    let Some((bytes, mime)) = embedded_asset(path) else {
+        return Response::builder()
+            .status(404)
+            .header(CONTENT_TYPE, "text/plain; charset=utf-8")
+            .body(Cow::Owned(b"asset not found".to_vec()))
+            .unwrap();
+    };
+    if path == "/index.html" {
+        let html = String::from_utf8_lossy(bytes).replace("__INITIAL_STATE__", "null");
+        Response::builder()
+            .header(CONTENT_TYPE, mime)
+            .body(Cow::Owned(html.into_bytes()))
+            .unwrap()
+    } else {
+        Response::builder()
+            .header(CONTENT_TYPE, mime)
+            .body(Cow::Borrowed(bytes))
+            .unwrap()
+    }
 }
 fn image_response(request: &Request<Vec<u8>>) -> Response<Cow<'static, [u8]>> {
     let query = request.uri().query().unwrap_or_default();
@@ -214,10 +242,11 @@ fn notice_script(message: &str, is_error: bool) -> String {
     )
 }
 
-fn resolve_internal_link(
+fn resolve_internal_link_mode(
     source: &Path,
     href: &str,
     cwd: &Path,
+    obsidian: bool,
 ) -> Result<(PathBuf, Option<String>), String> {
     let decoded = percent_decode_str(href.trim())
         .decode_utf8_lossy()
@@ -228,7 +257,12 @@ fn resolve_internal_link(
         .map(|(path, _)| path)
         .unwrap_or(target);
     if target.is_empty() {
-        return Err("This link points to the current document.".into());
+        if !obsidian {
+            return Err("This link points to the current document.".into());
+        }
+        let path = validate_markdown(source, cwd)?;
+        let fragment = (!fragment.is_empty()).then(|| fragment.to_owned());
+        return Ok((path, fragment));
     }
     let is_file_url = target
         .get(..7)
@@ -245,16 +279,55 @@ fn resolve_internal_link(
     } else {
         PathBuf::from(target.replace('/', "\\"))
     };
-    let joined = if candidate.is_absolute() {
-        candidate
+    let path = if obsidian {
+        resolve_obsidian_path(source, &candidate, target, cwd)?
     } else {
-        source.parent().unwrap_or(cwd).join(candidate)
+        let joined = if candidate.is_absolute() {
+            candidate
+        } else {
+            source.parent().unwrap_or(cwd).join(candidate)
+        };
+        validate_markdown(&joined, cwd)?
     };
-    let path = validate_markdown(&joined, cwd)?;
     let fragment = (!fragment.is_empty()).then(|| fragment.to_owned());
     Ok((path, fragment))
 }
 
+fn resolve_obsidian_path(
+    source: &Path,
+    candidate: &Path,
+    display_target: &str,
+    cwd: &Path,
+) -> Result<PathBuf, String> {
+    if candidate.is_absolute() {
+        return validate_markdown(candidate, cwd)
+            .map_err(|_| format!("Obsidian note not found: {display_target}"));
+    }
+    let needs_md_extension = candidate
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map_or(true, |extension| extension.is_empty());
+    let mut base = source.parent().unwrap_or(cwd).to_path_buf();
+    loop {
+        let direct = base.join(candidate);
+        if let Ok(path) = validate_markdown(&direct, cwd) {
+            return Ok(path);
+        }
+        if needs_md_extension {
+            let mut with_extension = direct.clone();
+            with_extension.set_extension("md");
+            if let Ok(path) = validate_markdown(&with_extension, cwd) {
+                return Ok(path);
+            }
+        }
+        let Some(parent) = base.parent() else { break };
+        if parent == base {
+            break;
+        }
+        base = parent.to_path_buf();
+    }
+    Err(format!("Obsidian note not found: {display_target}"))
+}
 fn navigate_script(payload: &DocumentPayload, fragment: Option<&str>) -> String {
     let payload_json = serde_json::to_string(payload).unwrap_or_else(|_| "null".into());
     let fragment_json = serde_json::to_string(&fragment).unwrap_or_else(|_| "null".into());
@@ -355,7 +428,8 @@ fn create_window(
     let ipc_proxy = proxy.clone();
     let drop_proxy = proxy.clone();
     let builder = WebViewBuilder::new()
-        .with_html(bootstrap_html(None))
+        .with_url("mv-app://localhost/index.html")
+        .with_custom_protocol("mv-app".into(), |_id, request| app_response(&request))
         .with_custom_protocol("mv-image".into(), |_id, request| image_response(&request))
         .with_ipc_handler(move |request: Request<String>| {
             let _ = ipc_proxy.send_event(UserEvent::Ipc(id, request.body().clone()));
@@ -536,7 +610,8 @@ fn main() -> wry::Result<()> {
                         let result = (|| -> Result<(DocumentPayload, Option<String>), String> {
                             let href = parsed.get("href").and_then(|v| v.as_str()).ok_or("Missing local link target.")?;
                             let source = current_documents.get(&id).cloned().or_else(|| parsed.get("path").and_then(|v| v.as_str()).map(PathBuf::from)).ok_or("The current document path is unavailable.")?;
-                            let (path, fragment) = resolve_internal_link(&source, href, &cwd)?;
+                            let obsidian = parsed.get("obsidian").and_then(|value| value.as_bool()).unwrap_or(false);
+                            let (path, fragment) = resolve_internal_link_mode(&source, href, &cwd, obsidian)?;
                             Ok((read_document(&path)?, fragment))
                         })();
                         match result {
@@ -626,14 +701,55 @@ mod tests {
         fs::write(&target, "# next").unwrap();
 
         let (resolved, fragment) =
-            resolve_internal_link(&source, "./next.md#section", &root).unwrap();
+            resolve_internal_link_mode(&source, "./next.md#section", &root, false).unwrap();
         assert_eq!(resolved, target.canonicalize().unwrap());
         assert_eq!(fragment.as_deref(), Some("section"));
-        assert!(resolve_internal_link(&source, "https://example.com/next.md", &root).is_err());
+        assert!(
+            resolve_internal_link_mode(&source, "https://example.com/next.md", &root, false)
+                .is_err()
+        );
 
         let _ = fs::remove_dir_all(root);
     }
 
+    #[test]
+    fn resolves_obsidian_wiki_links_across_vault_directories() {
+        let root =
+            std::env::temp_dir().join(format!("markdown-viewer-obsidian-{}", std::process::id()));
+        let notes = root.join("notes");
+        fs::create_dir_all(&notes).unwrap();
+        let source = notes.join("current.md");
+        let target = root.join("target note.md");
+        fs::write(&source, "# current").unwrap();
+        fs::write(&target, "# target").unwrap();
+
+        let (resolved, fragment) =
+            resolve_internal_link_mode(&source, "target%20note#Heading", &root, true).unwrap();
+        assert_eq!(resolved, target.canonicalize().unwrap());
+        assert_eq!(fragment.as_deref(), Some("Heading"));
+
+        let (same_document, same_fragment) =
+            resolve_internal_link_mode(&source, "#Current", &root, true).unwrap();
+        assert_eq!(same_document, source.canonicalize().unwrap());
+        assert_eq!(same_fragment.as_deref(), Some("Current"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn rejects_obsidian_non_markdown_targets() {
+        let root = std::env::temp_dir().join(format!(
+            "markdown-viewer-obsidian-type-{}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let source = root.join("current.md");
+        let image = root.join("image.png");
+        fs::write(&source, "# current").unwrap();
+        fs::write(&image, b"not markdown").unwrap();
+        assert!(resolve_internal_link_mode(&source, "image.png", &root, true).is_err());
+        let _ = fs::remove_dir_all(root);
+    }
     #[test]
     fn reads_utf8_markdown_and_strips_bom() {
         let path =

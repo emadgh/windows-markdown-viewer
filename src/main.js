@@ -2,11 +2,14 @@ import "github-markdown-css/github-markdown.css";
 import "highlight.js/styles/github-dark.css";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
+import mermaid from "mermaid";
 import hljs from "highlight.js";
 import { directionForText } from "./direction.js";
+import { parseObsidianHref, rewriteObsidianLinks } from "./obsidian.js";
 import "./style.css";
 
 const documentRoot = document.querySelector("#document");
+const toolbar = document.querySelector(".toolbar");
 const directionButton = document.querySelector("#direction-button");
 const automaticButton = document.querySelector("#automatic-button");
 const associationButton = document.querySelector("#association-button");
@@ -20,9 +23,11 @@ const fontSizeInput = document.querySelector("#font-size-input");
 const fontSizeValue = document.querySelector("#font-size-value");
 const backButton = document.querySelector("#back-button");
 const forwardButton = document.querySelector("#forward-button");
+const printButton = document.querySelector("#print-button");
 const overlay = document.querySelector("#drop-overlay");
 const notice = document.querySelector("#notice");
 let manualDirection = null;
+let mermaidRenderGeneration = 0;
 let updateAction = "check";
 let currentPayload = null;
 const backStack = [];
@@ -38,14 +43,25 @@ const FONT_PRESETS = {
 };
 
 marked.setOptions({ gfm: true, breaks: false });
+mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "default" });
 marked.use({ renderer: { code({ text, lang }) {
-  const language = hljs.getLanguage(lang) ? lang : "plaintext";
+  const normalizedLanguage = (lang || "").trim().toLowerCase();
+  const escaped = text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+  if (normalizedLanguage === "mermaid") return `<div class="mermaid">${escaped}</div>\n`;
+  const language = hljs.getLanguage(normalizedLanguage) ? normalizedLanguage : "plaintext";
   const highlighted = language === "plaintext"
-    ? text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+    ? escaped
     : hljs.highlight(text, { language }).value;
   return `<pre><code class="hljs language-${language}">${highlighted}</code></pre>\n`;
 } } });
 
+function syncToolbarOffset() {
+  const height = Math.ceil(toolbar.getBoundingClientRect().height);
+  document.documentElement.style.setProperty("--toolbar-height", `${height}px`);
+}
+if ("ResizeObserver" in window) new ResizeObserver(syncToolbarOffset).observe(toolbar);
+window.addEventListener("resize", syncToolbarOffset, { passive: true });
+syncToolbarOffset();
 function hostMessage(message) {
   if (window.ipc?.postMessage) window.ipc.postMessage(JSON.stringify(message));
 }
@@ -81,6 +97,24 @@ function applyAutomaticDirection(container) {
     block.style.unicodeBidi = "plaintext";
   });
 }
+async function renderMermaidDiagrams() {
+  const generation = ++mermaidRenderGeneration;
+  const diagrams = [...documentRoot.querySelectorAll(".mermaid")];
+  if (!diagrams.length) return;
+  try {
+    await mermaid.run({ nodes: diagrams });
+  } catch (error) {
+    if (generation !== mermaidRenderGeneration) return;
+    const reason = error instanceof Error ? error.message : String(error);
+    diagrams.forEach((diagram) => {
+      if (!diagram.querySelector("svg")) {
+        diagram.classList.add("mermaid-error");
+        diagram.textContent = `Mermaid diagram error: ${reason}`;
+      }
+    });
+    showNotice("Could not render one or more Mermaid diagrams.", true);
+  }
+}
 function scrollToPosition(top) {
   window.scrollTo(0, top);
   document.documentElement.scrollTop = top;
@@ -88,7 +122,7 @@ function scrollToPosition(top) {
 }
 function renderDocument(payload, { scrollTop = 0, fragment = null } = {}) {
   manualDirection = null;
-  const rawHtml = marked.parse(payload.contents);
+  const rawHtml = marked.parse(rewriteObsidianLinks(payload.contents));
   const safeHtml = DOMPurify.sanitize(rawHtml, { USE_PROFILES: { html: true }, ADD_ATTR: ["target"] });
   documentRoot.innerHTML = safeHtml;
   documentRoot.removeAttribute("dir");
@@ -97,14 +131,23 @@ function renderDocument(payload, { scrollTop = 0, fragment = null } = {}) {
   setDirection(null);
   document.title = `${payload.name} — Markdown Viewer`;
   resolveRelativeImages(payload.path);
+  renderMermaidDiagrams();
   window.requestAnimationFrame(() => {
     if (fragment) {
-      const decoded = decodeURIComponent(fragment.replace(/^#/, ""));
-      const target = document.getElementById(decoded) || document.querySelector(`[name="${CSS.escape(decoded)}"]`);
-      if (target) { target.scrollIntoView({ block: "start" }); return; }
+      if (scrollToFragment(fragment)) return;
     }
     scrollToPosition(scrollTop);
   });
+}
+function scrollToFragment(fragment) {
+  const decoded = decodeURIComponent(fragment.replace(/^#/, ""));
+  const target = document.getElementById(decoded) || document.querySelector(`[name="${CSS.escape(decoded)}"]`);
+  if (target) {
+    target.scrollIntoView({ block: "start" });
+    return true;
+  }
+  showNotice(`Could not find section: ${decoded}`, true);
+  return false;
 }
 function resolveRelativeImages(documentPath) {
   for (const image of documentRoot.querySelectorAll("img[src]")) {
@@ -213,6 +256,7 @@ updateButton.addEventListener("click", () => hostMessage({ type: `update_${updat
 settingsUpdateButton.addEventListener("click", () => updateButton.click());
 backButton.addEventListener("click", goBack);
 forwardButton.addEventListener("click", goForward);
+printButton.addEventListener("click", () => window.print());
 settingsButton.addEventListener("click", () => settingsDialog.showModal());
 settingsClose.addEventListener("click", closeSettings);
 settingsDialog.addEventListener("click", (event) => { if (event.target === settingsDialog) closeSettings(); });
@@ -222,6 +266,17 @@ documentRoot.addEventListener("click", (event) => {
   const link = event.target.closest("a[href]");
   if (!link) return;
   const href = link.getAttribute("href") || "";
+  const obsidianTarget = parseObsidianHref(href);
+  if (obsidianTarget !== null) {
+    event.preventDefault();
+    if (!currentPayload?.path) { showNotice("Open a Markdown file before following a local link.", true); return; }
+    if (obsidianTarget.startsWith("#")) {
+      scrollToFragment(obsidianTarget);
+      return;
+    }
+    hostMessage({ type: "internal", path: currentPayload.path, href: obsidianTarget, obsidian: true });
+    return;
+  }
   if (/^(https?|mailto|tel):/i.test(href)) {
     event.preventDefault();
     hostMessage({ type: "external", url: link.href });
