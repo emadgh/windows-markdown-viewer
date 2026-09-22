@@ -66,12 +66,37 @@ fn generate_asset_manifest(root: &Path) {
     fs::write(manifest, source).expect("could not write embedded asset manifest");
 }
 
+#[cfg(windows)]
+fn embed_windows_resources() {
+    let icon = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is set"))
+        .join("assets")
+        .join("app.ico");
+    let icon = icon
+        .to_str()
+        .expect("application icon path must be valid UTF-8");
+
+    let mut resources = winres::WindowsResource::new();
+    resources.set_icon(icon);
+    resources.set("FileDescription", "Markdown Viewer for Windows");
+    resources.set("ProductName", "Markdown Viewer");
+    resources.set("OriginalFilename", "markdown-viewer-webview2.exe");
+    resources
+        .compile()
+        .expect("could not embed the Windows application icon");
+}
+
+#[cfg(not(windows))]
+fn embed_windows_resources() {}
+
 fn main() {
     println!("cargo:rerun-if-changed=../index.html");
     println!("cargo:rerun-if-changed=../src");
     println!("cargo:rerun-if-changed=../scripts/inline-dist.mjs");
     println!("cargo:rerun-if-changed=../vite.config.js");
     println!("cargo:rerun-if-changed=../dist");
+    println!("cargo:rerun-if-changed=assets/app.ico");
+    embed_windows_resources();
+
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap();
