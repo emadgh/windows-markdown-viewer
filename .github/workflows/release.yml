@@ -52,4 +52,5 @@ jobs:
           $exe = "webview2-viewer/target/release/markdown-viewer.exe"
           $hash = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
           "$hash *markdown-viewer.exe" | Set-Content -LiteralPath "markdown-viewer.exe.sha256" -Encoding ascii
-          gh release upload $tag $exe#markdown-viewer.exe markdown-viewer.exe.sha256 --repo "${{ github.repository }}" --clobber
+          gh release upload $tag ($exe + "#markdown-viewer.exe") "markdown-viewer.exe.sha256" --repo "${{ github.repository }}" --clobber
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
