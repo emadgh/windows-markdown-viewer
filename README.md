@@ -4,6 +4,8 @@ A fast, portable, read-only Markdown viewer for Windows 10/11 x64.
 
 The desktop shell is a small Rust application using [`wry`](https://github.com/tauri-apps/wry) and the system WebView2 runtime. The UI is a bundled vanilla JavaScript application; Tauri and React are not used.
 
+![Markdown Viewer screenshot](docs/screenshot.jpg)
+
 ## Features
 
 - Open `.md` files from the command line, Windows **Open with**, or double-click.
@@ -41,8 +43,8 @@ On startup, the viewer checks the latest release in [emadgh/windows-markdown-vie
 
 Each release must publish these assets with the exact names configured in `webview2-viewer/src/main.rs`:
 
-- `markdown-viewer-webview2.exe`
-- `markdown-viewer-webview2.exe.sha256` (the first whitespace-delimited token is the SHA-256 digest)
+- `markdown-viewer.exe`
+- `markdown-viewer.exe.sha256` (the first whitespace-delimited token is the SHA-256 digest)
 
 ## Requirements
 
@@ -60,7 +62,7 @@ npm run build:portable
 The executable is written to:
 
 ```text
-webview2-viewer\target\release\markdown-viewer-webview2.exe
+webview2-viewer\target\release\markdown-viewer.exe
 ```
 
 The build script compiles the Vite frontend and embeds the HTML, JavaScript, CSS, and supporting assets into the Rust executable. The `dist/` and Cargo `target/` directories are generated and intentionally ignored by Git.
@@ -70,13 +72,13 @@ The build script compiles the Vite frontend and embeds the HTML, JavaScript, CSS
 Open an empty viewer:
 
 ```powershell
-.\webview2-viewer\target\release\markdown-viewer-webview2.exe
+.\webview2-viewer\target\release\markdown-viewer.exe
 ```
 
 Open a document directly:
 
 ```powershell
-.\webview2-viewer\target\release\markdown-viewer-webview2.exe .\docs\README.md
+.\webview2-viewer\target\release\markdown-viewer.exe .\docs\README.md
 ```
 
 You can also drop one or more `.md` files onto any viewer window. A second launch forwards its paths to the first process instead of creating a duplicate process.
@@ -87,7 +89,7 @@ The app registers a per-user `MarkdownViewer.md` ProgID when it starts and from 
 
 **Settings → Apps → Default apps → Choose defaults by file type → `.md`**
 
-Then select `markdown-viewer-webview2.exe` once.
+Then select `markdown-viewer.exe` once.
 
 ## Development and tests
 

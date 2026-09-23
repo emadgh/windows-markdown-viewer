@@ -9,7 +9,7 @@ use std::{
     borrow::Cow,
     collections::HashMap,
     fs,
-    io::{Read, Write},
+    io::{Cursor, Read, Write},
     net::{TcpListener, TcpStream},
     path::{Path, PathBuf},
     process::Command,
@@ -19,7 +19,7 @@ use std::{
 use tao::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoopBuilder, EventLoopProxy, EventLoopWindowTarget},
-    window::{Window, WindowBuilder, WindowId},
+    window::{Icon, Window, WindowBuilder, WindowId},
 };
 use update_via_github::{UpdateConfig, UpdateManager, UpdateStatus};
 
@@ -34,8 +34,10 @@ const MAX_IMAGE_BYTES: u64 = 15 * 1024 * 1024;
 const INSTANCE_PORT: u16 = 45831;
 const INSTANCE_MAGIC: &[u8] = b"MARKDOWN_VIEWER_1\n";
 const UPDATE_REPOSITORY: &str = "emadgh/windows-markdown-viewer";
-const UPDATE_ASSET: &str = "markdown-viewer-webview2.exe";
-const UPDATE_CHECKSUM: &str = "markdown-viewer-webview2.exe.sha256";
+const UPDATE_ASSET: &str = "markdown-viewer.exe";
+const UPDATE_CHECKSUM: &str = "markdown-viewer.exe.sha256";
+const APP_ICON_BYTES: &[u8] =
+    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/app.ico"));
 
 include!(concat!(env!("OUT_DIR"), "/embedded_assets.rs"));
 
@@ -430,6 +432,16 @@ fn start_update_check(manager: &UpdateManager, proxy: &EventLoopProxy<UserEvent>
     watch_update(manager.clone(), proxy.clone());
     true
 }
+fn app_window_icon() -> Option<Icon> {
+    let icon_dir = ico::IconDir::read(Cursor::new(APP_ICON_BYTES)).ok()?;
+    let entry = icon_dir.entries().iter().min_by_key(|entry| {
+        let size = entry.width().max(entry.height());
+        (size.abs_diff(32), size)
+    })?;
+    let image = entry.decode().ok()?;
+    Icon::from_rgba(image.rgba_data().to_vec(), image.width(), image.height()).ok()
+}
+
 fn create_window(
     target: &EventLoopWindowTarget<UserEvent>,
     proxy: EventLoopProxy<UserEvent>,
@@ -438,6 +450,7 @@ fn create_window(
     let title = window_title(payload);
     let window = WindowBuilder::new()
         .with_title(title)
+        .with_window_icon(app_window_icon())
         .with_inner_size(tao::dpi::LogicalSize::new(1100.0, 800.0))
         .with_min_inner_size(tao::dpi::LogicalSize::new(640.0, 460.0))
         .build(target)

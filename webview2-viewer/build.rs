@@ -79,7 +79,7 @@ fn embed_windows_resources() {
     resources.set_icon(icon);
     resources.set("FileDescription", "Markdown Viewer for Windows");
     resources.set("ProductName", "Markdown Viewer");
-    resources.set("OriginalFilename", "markdown-viewer-webview2.exe");
+    resources.set("OriginalFilename", "markdown-viewer.exe");
     resources
         .compile()
         .expect("could not embed the Windows application icon");
