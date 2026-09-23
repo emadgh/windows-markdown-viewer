@@ -1,0 +1,55 @@
+name: Build Windows release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to build
+        required: true
+        default: v0.4.4
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable-x86_64-pc-windows-msvc
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Build portable executable
+        run: cargo build --release --manifest-path webview2-viewer/Cargo.toml
+
+      - name: Upload executable to GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ inputs.tag || github.ref_name }}"
+          $exe = "webview2-viewer/target/release/markdown-viewer.exe"
+          $hash = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash *markdown-viewer.exe" | Set-Content -LiteralPath "markdown-viewer.exe.sha256" -Encoding ascii
+          gh release upload $tag $exe#markdown-viewer.exe markdown-viewer.exe.sha256 --repo "${{ github.repository }}" --clobber
