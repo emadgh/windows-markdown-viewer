@@ -25,6 +25,10 @@ The desktop shell is a small Rust application using [`wry`](https://github.com/t
 - Edit the current document with VS Code when available, or the Windows Notepad fallback.
 - Single portable executable; no installer is required.
 
+## Version 0.4.3
+
+This release adds the GitHub README screenshot, embeds the application icon in the titlebar, and standardizes the portable executable name as markdown-viewer.exe.
+
 ## Version 0.4.2
 
 This release embeds the provided Markdown Viewer icon in the Windows executable and uses it for registered `.md` files.
