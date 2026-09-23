@@ -18,6 +18,7 @@ The desktop shell is a small Rust application using [`wry`](https://github.com/t
 - GitHub-style Markdown, fenced-code highlighting, and sanitized HTML.
 - Mermaid code fences using the `mermaid` language are rendered as SVG with strict security.
 - Relative local images resolved beside the Markdown file.
+- Clickable images open in a keyboard-navigable gallery/lightbox with previous/next controls.
 - External HTTP(S) links opened in the system browser.
 - Relative Markdown links and Obsidian wiki links (`[[Note]]`, aliases, headings) open in the current window with Back/Forward history.
 - Settings dialog for font family, font size, file association, and update actions.
@@ -25,9 +26,9 @@ The desktop shell is a small Rust application using [`wry`](https://github.com/t
 - Edit the current document with VS Code when available, or the Windows Notepad fallback.
 - Single portable executable; no installer is required.
 
-## Version 0.4.3
+## Version 0.4.4
 
-This release adds the GitHub README screenshot, embeds the application icon in the titlebar, and standardizes the portable executable name as markdown-viewer.exe.
+This release adds local Markdown image rendering with a clickable gallery/lightbox and fixes Windows WebView2 image loading.
 
 ## Version 0.4.2
 

@@ -46,3 +46,121 @@ button:disabled { cursor: default; opacity: .55; }
   .markdown-body .mermaid { break-inside: avoid; border-color: #ddd; background: #fff; }
   pre, blockquote, table, img { break-inside: avoid; }
 }
+.markdown-body img {
+  cursor: zoom-in;
+  border-radius: 6px;
+}
+.markdown-body img:focus-visible {
+  outline: 3px solid #3b82f6;
+  outline-offset: 3px;
+}
+body.lightbox-open {
+  overflow: hidden;
+}
+.image-lightbox[hidden] {
+  display: none;
+}
+.image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(0 0 0 / 82%);
+  color: #fff;
+}
+.image-lightbox-backdrop {
+  position: absolute;
+  inset: 0;
+}
+.image-lightbox-panel {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  width: min(100%, 1200px);
+  max-height: 100%;
+  padding: 52px 20px 20px;
+  border: 1px solid rgb(255 255 255 / 22%);
+  border-radius: 12px;
+  background: rgb(20 20 24 / 96%);
+  box-shadow: 0 20px 80px rgb(0 0 0 / 55%);
+}
+.image-lightbox-figure {
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  text-align: center;
+}
+.image-lightbox-image {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100vh - 170px);
+  width: auto;
+  height: auto;
+  margin: 0 auto;
+  object-fit: contain;
+  cursor: zoom-out;
+}
+.image-lightbox-figure figcaption {
+  max-width: 100%;
+  margin-top: 10px;
+  overflow-wrap: anywhere;
+  color: rgb(255 255 255 / 82%);
+  font-size: .92em;
+}
+.image-lightbox-count {
+  min-height: 1.2em;
+  margin-top: 4px;
+  color: rgb(255 255 255 / 62%);
+  font-size: .82em;
+}
+.image-lightbox-close,
+.image-lightbox-nav {
+  border: 1px solid rgb(255 255 255 / 30%);
+  background: rgb(255 255 255 / 10%);
+  color: #fff;
+}
+.image-lightbox-close:hover,
+.image-lightbox-nav:hover:not(:disabled) {
+  background: rgb(255 255 255 / 22%);
+}
+.image-lightbox-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  min-width: 38px;
+  min-height: 34px;
+  padding: 3px 10px;
+  font-size: 1.4rem;
+  line-height: 1;
+}
+.image-lightbox-nav {
+  min-width: 40px;
+  min-height: 44px;
+  padding: 4px 11px;
+  font-size: 2rem;
+  line-height: 1;
+}
+@media (max-width: 700px) {
+  .image-lightbox {
+    padding: 10px;
+  }
+  .image-lightbox-panel {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    width: 100%;
+    padding: 48px 8px 12px;
+  }
+  .image-lightbox-nav {
+    min-width: 34px;
+    padding: 4px 7px;
+  }
+}
+@media print {
+  .image-lightbox {
+    display: none !important;
+  }
+}

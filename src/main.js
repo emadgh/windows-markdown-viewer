@@ -31,10 +31,20 @@ const printButton = document.querySelector("#print-button");
 const editButton = document.querySelector("#edit-button");
 const overlay = document.querySelector("#drop-overlay");
 const notice = document.querySelector("#notice");
+const lightbox = document.querySelector("#image-lightbox");
+const lightboxImage = document.querySelector("#lightbox-image");
+const lightboxCaption = document.querySelector("#lightbox-caption");
+const lightboxCount = document.querySelector("#lightbox-count");
+const lightboxClose = document.querySelector("#lightbox-close");
+const lightboxPrevious = document.querySelector("#lightbox-previous");
+const lightboxNext = document.querySelector("#lightbox-next");
 let manualDirection = null;
 let mermaidRenderGeneration = 0;
 let updateAction = "check";
 let currentPayload = null;
+let galleryImages = [];
+let lightboxIndex = 0;
+let lightboxPreviousFocus = null;
 const backStack = [];
 const forwardStack = [];
 const bootstrap = window.__BOOTSTRAP__ || null;
@@ -135,6 +145,7 @@ function scrollToPosition(top) {
 }
 function renderDocument(payload, { scrollTop = 0, fragment = null } = {}) {
   manualDirection = null;
+  closeLightbox();
   const rawHtml = marked.parse(rewriteObsidianLinks(payload.contents));
   const safeHtml = DOMPurify.sanitize(rawHtml, { USE_PROFILES: { html: true }, ADD_ATTR: ["target"] });
   documentRoot.innerHTML = safeHtml;
@@ -144,6 +155,7 @@ function renderDocument(payload, { scrollTop = 0, fragment = null } = {}) {
   setDirection(null);
   document.title = `${payload.name} — Markdown Viewer v${APP_VERSION}`;
   resolveRelativeImages(payload.path);
+  refreshImageGallery();
   renderMermaidDiagrams();
   window.requestAnimationFrame(() => {
     if (fragment) {
@@ -166,9 +178,54 @@ function resolveRelativeImages(documentPath) {
   for (const image of documentRoot.querySelectorAll("img[src]")) {
     const source = image.getAttribute("src");
     if (!source || /^(https?:|data:|#|mv-image:)/i.test(source)) continue;
-    image.src = `mv-image://localhost/?doc=${encodeURIComponent(documentPath)}&src=${encodeURIComponent(source)}`;
+    image.src = `mv-app://localhost/__image?doc=${encodeURIComponent(documentPath)}&src=${encodeURIComponent(source)}`;
     image.addEventListener("error", () => showNotice(`Could not load local image: ${source}`, true), { once: true });
   }
+}
+function refreshImageGallery() {
+  galleryImages = [...documentRoot.querySelectorAll("img")];
+  galleryImages.forEach((image, index) => {
+    image.tabIndex = 0;
+    image.setAttribute("role", "button");
+    const label = image.alt?.trim() || ("Image " + (index + 1));
+    image.setAttribute("aria-label", "Open " + label);
+  });
+}
+function renderLightboxImage() {
+  const image = galleryImages[lightboxIndex];
+  if (!image) return;
+  lightboxImage.src = image.currentSrc || image.src;
+  lightboxImage.alt = image.alt || "";
+  lightboxCaption.textContent = image.alt?.trim() || "";
+  lightboxCount.textContent = galleryImages.length > 1
+    ? (lightboxIndex + 1) + " / " + galleryImages.length
+    : "";
+  lightboxPrevious.disabled = galleryImages.length < 2;
+  lightboxNext.disabled = galleryImages.length < 2;
+}
+function openLightbox(index) {
+  if (!galleryImages.length) return;
+  lightboxIndex = ((index % galleryImages.length) + galleryImages.length) % galleryImages.length;
+  lightboxPreviousFocus = document.activeElement;
+  renderLightboxImage();
+  lightbox.hidden = false;
+  document.body.classList.add("lightbox-open");
+  lightboxClose.focus();
+}
+function closeLightbox() {
+  if (lightbox.hidden) return;
+  lightbox.hidden = true;
+  document.body.classList.remove("lightbox-open");
+  lightboxImage.removeAttribute("src");
+  if (lightboxPreviousFocus && typeof lightboxPreviousFocus.focus === "function") {
+    lightboxPreviousFocus.focus();
+  }
+  lightboxPreviousFocus = null;
+}
+function stepLightbox(delta) {
+  if (galleryImages.length < 2) return;
+  lightboxIndex = (lightboxIndex + delta + galleryImages.length) % galleryImages.length;
+  renderLightboxImage();
 }
 function updateEditButton() {
   editButton.disabled = !currentPayload?.path;
@@ -290,6 +347,13 @@ settingsDialog.addEventListener("click", (event) => { if (event.target === setti
 fontSelect.addEventListener("change", () => { applyViewerSettings(fontSelect.value, fontSizeInput.value); saveViewerSettings(); });
 fontSizeInput.addEventListener("input", () => { applyViewerSettings(fontSelect.value, fontSizeInput.value); saveViewerSettings(); });
 documentRoot.addEventListener("click", (event) => {
+  const image = event.target?.closest?.("img");
+  if (image && documentRoot.contains(image)) {
+    event.preventDefault();
+    const index = galleryImages.indexOf(image);
+    if (index >= 0) openLightbox(index);
+    return;
+  }
   const link = event.target.closest("a[href]");
   if (!link) return;
   const href = link.getAttribute("href") || "";
@@ -314,6 +378,33 @@ documentRoot.addEventListener("click", (event) => {
   if (!currentPayload?.path) { showNotice("Open a Markdown file before following a local link.", true); return; }
   hostMessage({ type: "internal", path: currentPayload.path, href });
 });
+lightboxClose.addEventListener("click", closeLightbox);
+lightboxPrevious.addEventListener("click", () => stepLightbox(-1));
+lightboxNext.addEventListener("click", () => stepLightbox(1));
+lightbox.addEventListener("click", (event) => {
+  if (event.target === lightbox || event.target.matches?.("[data-lightbox-close]")) closeLightbox();
+});
+lightboxImage.addEventListener("error", () => showNotice("Could not load image preview.", true));
+documentRoot.addEventListener("keydown", (event) => {
+  const image = event.target?.closest?.("img");
+  if (!image || !documentRoot.contains(image)) return;
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    const index = galleryImages.indexOf(image);
+    if (index >= 0) openLightbox(index);
+  }
+});
+window.addEventListener("keydown", (event) => {
+  if (lightbox.hidden) return;
+  if (event.key === "Escape") closeLightbox();
+  else if (event.key === "ArrowLeft") {
+    event.preventDefault();
+    stepLightbox(-1);
+  } else if (event.key === "ArrowRight") {
+    event.preventDefault();
+    stepLightbox(1);
+  }
+});
 window.__hostDrop = (state, message) => {
   if (state === "enter") overlay.classList.add("active");
   else overlay.classList.remove("active");
@@ -332,4 +423,4 @@ loadViewerSettings();
 updateHistoryButtons();
 showFirstRunAssociationPrompt();
 if (bootstrap) window.__hostLoad(bootstrap);
-hostMessage({ type: "ready" });
+hostMessage({ type: "ready" });

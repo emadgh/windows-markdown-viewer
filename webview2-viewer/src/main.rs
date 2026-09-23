@@ -111,6 +111,10 @@ fn bootstrap_html(payload: Option<&DocumentPayload>) -> String {
     HTML.replace("__INITIAL_STATE__", &json)
 }
 fn app_response(request: &Request<Vec<u8>>) -> Response<Cow<'static, [u8]>> {
+
+    if request.uri().path() == "/__image" {
+        return image_response(request);
+    }
     let path = if request.uri().path() == "/" {
         "/index.html"
     } else {
@@ -863,6 +867,33 @@ mod tests {
         assert_eq!(document.contents, "سلام");
         assert_eq!(document.name, path.file_name().unwrap().to_string_lossy());
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn serves_relative_image_bytes() {
+        let root =
+            std::env::temp_dir().join(format!("markdown-viewer-image-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let markdown = root.join("README.md");
+        let image = root.join("sample.png");
+        fs::write(&markdown, "# image").unwrap();
+        fs::write(&image, [137_u8, 80, 78, 71]).unwrap();
+        let encoded_doc = percent_encoding::utf8_percent_encode(
+            markdown.to_string_lossy().as_ref(),
+            percent_encoding::NON_ALPHANUMERIC,
+        )
+        .to_string();
+        let request = Request::builder()
+            .uri(format!(
+                "mv-image://localhost/?doc={encoded_doc}&src=sample.png"
+            ))
+            .body(Vec::new())
+            .unwrap();
+        let response = image_response(&request);
+        assert_eq!(response.status(), 200);
+        assert_eq!(response.headers().get(CONTENT_TYPE).unwrap(), "image/png");
+        assert_eq!(response.body().as_ref(), &[137, 80, 78, 71]);
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
