@@ -897,6 +897,34 @@ mod tests {
     }
 
     #[test]
+    fn app_route_serves_the_readme_screenshot() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        let markdown = root.join("README.md");
+        let image = root.join("docs").join("screenshot.jpg");
+        assert!(markdown.is_file(), "missing {}", markdown.display());
+        assert!(image.is_file(), "missing {}", image.display());
+        let encoded_doc = percent_encoding::utf8_percent_encode(
+            markdown.to_string_lossy().as_ref(),
+            percent_encoding::NON_ALPHANUMERIC,
+        )
+        .to_string();
+        let request = Request::builder()
+            .uri(format!(
+                "mv-app://localhost/__image?doc={encoded_doc}&src=docs%2Fscreenshot.jpg"
+            ))
+            .body(Vec::new())
+            .unwrap();
+        let response = app_response(&request);
+        assert_eq!(response.status(), 200);
+        assert_eq!(response.headers().get(CONTENT_TYPE).unwrap(), "image/jpeg");
+        assert_eq!(response.body().len(), fs::metadata(image).unwrap().len() as usize);
+        assert!(response.body().starts_with(&[0xFF, 0xD8, 0xFF]));
+    }
+
+    #[test]
     fn escapes_bootstrap_html_terminators() {
         let payload = DocumentPayload {
             path: "C:\\docs\\sample.md".into(),

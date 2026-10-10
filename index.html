@@ -17,8 +17,11 @@
         <button id="forward-button" type="button" aria-label="Forward" title="Forward" disabled>→</button>
         <button id="print-button" type="button" aria-label="Print document" title="Print document">Print</button>
         <button id="edit-button" type="button" aria-label="Edit document" title="Open document in an editor" disabled>Edit</button>
-        <button id="direction-button" type="button" aria-label="Use right-to-left direction" title="Switch document direction">RTL</button>
-        <button id="automatic-button" type="button" title="Return to automatic paragraph direction" hidden>Auto</button>
+        <div class="direction-controls" role="group" aria-label="Document direction">
+          <button id="automatic-button" type="button" data-direction="auto" aria-pressed="true" title="Automatic paragraph direction">Auto</button>
+          <button id="direction-button" type="button" data-direction="rtl" aria-pressed="false" title="Force right-to-left direction">RTL</button>
+          <button id="ltr-button" type="button" data-direction="ltr" aria-pressed="false" title="Force left-to-right direction">LTR</button>
+        </div>
         <button id="update-button" type="button" title="Update available" hidden>Update</button>
         <button id="settings-button" type="button" aria-label="Open settings" title="Settings">⚙</button>
       </div>

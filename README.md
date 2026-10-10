@@ -13,7 +13,7 @@ The desktop shell is a small Rust application using [`wry`](https://github.com/t
 - Drag and drop Markdown files anywhere in the window.
 - Fixed toolbar stays visible while scrolling.
 - Automatic paragraph direction using Unicode bidirectional classification.
-- Manual RTL/LTR direction controls with an Auto reset button.
+- Auto/RTL/LTR direction controls with a highlighted active mode; forced direction also applies to English-first paragraphs and lines.
 - Embedded Vazirmatn Persian/Arabic font with system fallbacks for reliable Unicode rendering.
 - GitHub-style Markdown, fenced-code highlighting, and sanitized HTML.
 - Mermaid code fences using the `mermaid` language are rendered as SVG with strict security.
@@ -25,6 +25,12 @@ The desktop shell is a small Rust application using [`wry`](https://github.com/t
 - Print the current Markdown document with a print-optimized layout.
 - Edit the current document with VS Code when available, or the Windows Notepad fallback.
 - Single portable executable; no installer is required.
+
+## Version 0.4.5
+
+- Forced RTL/LTR now works on paragraphs and individual lines that start with English words.
+- Auto, RTL, and LTR have dedicated buttons with a highlighted active mode.
+- Local images use the WebView's current origin on Windows, fixing README screenshots and image galleries.
 
 ## Version 0.4.4
 
@@ -83,7 +89,7 @@ Open an empty viewer:
 Open a document directly:
 
 ```powershell
-.\webview2-viewer\target\release\markdown-viewer.exe .\docs\README.md
+.\webview2-viewer\target\release\markdown-viewer.exe .\README.md
 ```
 
 You can also drop one or more `.md` files onto any viewer window. A second launch forwards its paths to the first process instead of creating a duplicate process.
@@ -110,6 +116,14 @@ Run tests:
 npm test
 cargo test --manifest-path webview2-viewer\Cargo.toml
 ```
+
+With Node.js 22+ and other viewer windows closed, test the built application in WebView2:
+
+```powershell
+node scripts/check-webview.mjs .\webview2-viewer\target\release\markdown-viewer.exe
+```
+
+This opens the repository README and verifies its screenshot and lightbox, forced RTL/LTR layout, active direction controls, and the Auto reset when opening a new document.
 
 The Rust host validates local Markdown paths, limits document/image sizes, serves relative images through a private protocol, sanitizes bootstrap data, and handles the Windows single-instance forwarding channel.
 

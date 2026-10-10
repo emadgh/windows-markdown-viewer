@@ -6,7 +6,7 @@ import DOMPurify from "dompurify";
 import { marked } from "marked";
 import mermaid from "mermaid";
 import hljs from "highlight.js";
-import { directionForText } from "./direction.js";
+import { applyDocumentDirection } from "./direction.js";
 import { parseObsidianHref, rewriteObsidianLinks } from "./obsidian.js";
 import "./style.css";
 
@@ -14,6 +14,8 @@ const documentRoot = document.querySelector("#document");
 const toolbar = document.querySelector(".toolbar");
 const directionButton = document.querySelector("#direction-button");
 const automaticButton = document.querySelector("#automatic-button");
+const ltrButton = document.querySelector("#ltr-button");
+const directionControls = document.querySelectorAll("[data-direction]");
 const settingsAssociationButton = document.querySelector("#settings-association-button");
 const updateButton = document.querySelector("#update-button");
 const settingsButton = document.querySelector("#settings-button");
@@ -38,7 +40,6 @@ const lightboxCount = document.querySelector("#lightbox-count");
 const lightboxClose = document.querySelector("#lightbox-close");
 const lightboxPrevious = document.querySelector("#lightbox-previous");
 const lightboxNext = document.querySelector("#lightbox-next");
-let manualDirection = null;
 let mermaidRenderGeneration = 0;
 let updateAction = "check";
 let currentPayload = null;
@@ -52,7 +53,6 @@ const APP_VERSION = typeof window.__APP_VERSION__ === "string" && window.__APP_V
   ? window.__APP_VERSION__
   : "dev";
 const GITHUB_URL = "https://github.com/emadgh/windows-markdown-viewer";
-const directionBlocks = "p, h1, h2, h3, h4, h5, h6, li, blockquote, td, th, figcaption";
 const FONT_PRESETS = {
   system: '"Vazirmatn", "Segoe UI", "Noto Sans Arabic", Tahoma, sans-serif',
   vazir: '"Vazirmatn", "Segoe UI", "Noto Sans Arabic", Tahoma, sans-serif',
@@ -95,29 +95,9 @@ function showNotice(message, isError = false) {
   window.setTimeout(() => notice.classList.remove("visible"), 5200);
 }
 function setDirection(direction) {
-  manualDirection = direction;
-  if (direction) {
-    documentRoot.setAttribute("dir", direction);
-    documentRoot.dataset.manualDirection = "true";
-    documentRoot.querySelectorAll(directionBlocks).forEach((block) => block.setAttribute("dir", direction));
-  } else {
-    documentRoot.removeAttribute("dir");
-    delete documentRoot.dataset.manualDirection;
-    documentRoot.querySelectorAll(directionBlocks).forEach((block) => {
-      const automatic = block.dataset.autoDirection;
-      if (automatic) block.setAttribute("dir", automatic);
-    });
-  }
-  directionButton.textContent = direction === "rtl" ? "LTR" : "RTL";
-  directionButton.setAttribute("aria-label", direction === "rtl" ? "Use left-to-right direction" : "Use right-to-left direction");
-  automaticButton.hidden = !direction;
-}
-function applyAutomaticDirection(container) {
-  container.querySelectorAll(directionBlocks).forEach((block) => {
-    const automatic = directionForText(block.textContent);
-    block.dataset.autoDirection = automatic;
-    block.setAttribute("dir", automatic);
-    block.style.unicodeBidi = "plaintext";
+  applyDocumentDirection(documentRoot, direction);
+  directionControls.forEach((button) => {
+    button.setAttribute("aria-pressed", String(button.dataset.direction === (direction || "auto")));
   });
 }
 async function renderMermaidDiagrams() {
@@ -144,14 +124,12 @@ function scrollToPosition(top) {
   document.body.scrollTop = top;
 }
 function renderDocument(payload, { scrollTop = 0, fragment = null } = {}) {
-  manualDirection = null;
   closeLightbox();
   const rawHtml = marked.parse(rewriteObsidianLinks(payload.contents));
   const safeHtml = DOMPurify.sanitize(rawHtml, { USE_PROFILES: { html: true }, ADD_ATTR: ["target"] });
   documentRoot.innerHTML = safeHtml;
   documentRoot.removeAttribute("dir");
   delete documentRoot.dataset.manualDirection;
-  applyAutomaticDirection(documentRoot);
   setDirection(null);
   document.title = `${payload.name} — Markdown Viewer v${APP_VERSION}`;
   resolveRelativeImages(payload.path);
@@ -178,7 +156,8 @@ function resolveRelativeImages(documentPath) {
   for (const image of documentRoot.querySelectorAll("img[src]")) {
     const source = image.getAttribute("src");
     if (!source || /^(https?:|data:|#|mv-image:)/i.test(source)) continue;
-    image.src = `mv-app://localhost/__image?doc=${encodeURIComponent(documentPath)}&src=${encodeURIComponent(source)}`;
+    // Wry maps custom protocols to HTTP origins on Windows; retain that origin.
+    image.src = `/__image?doc=${encodeURIComponent(documentPath)}&src=${encodeURIComponent(source)}`;
     image.addEventListener("error", () => showNotice(`Could not load local image: ${source}`, true), { once: true });
   }
 }
@@ -331,7 +310,8 @@ function setUpdateControls(state) {
   settingsUpdateButton.textContent = label;
 }
 
-directionButton.addEventListener("click", () => setDirection(manualDirection === "rtl" ? "ltr" : "rtl"));
+directionButton.addEventListener("click", () => setDirection("rtl"));
+ltrButton.addEventListener("click", () => setDirection("ltr"));
 automaticButton.addEventListener("click", () => setDirection(null));
 settingsAssociationButton.addEventListener("click", () => hostMessage({ type: "register" }));
 updateButton.addEventListener("click", () => hostMessage({ type: `update_${updateAction}` }));
