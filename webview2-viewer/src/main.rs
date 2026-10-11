@@ -2,7 +2,7 @@
 
 use open::that as open_external;
 use percent_encoding::percent_decode_str;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::{
@@ -61,6 +61,50 @@ enum DropState {
     Enter,
     Leave,
     Drop(Vec<PathBuf>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum InstanceMode {
+    #[default]
+    Single,
+    Multiple,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+#[serde(default, rename_all = "camelCase")]
+struct HostSettings {
+    instance_mode: InstanceMode,
+}
+
+fn host_settings_path() -> PathBuf {
+    let directory = std::env::var_os("MARKDOWN_VIEWER_CONFIG_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            std::env::var_os("LOCALAPPDATA")
+                .map(PathBuf::from)
+                .unwrap_or_else(std::env::temp_dir)
+                .join("MarkdownViewer")
+        });
+    directory.join("settings.json")
+}
+
+fn read_host_settings(path: &Path) -> HostSettings {
+    fs::read(path).ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .unwrap_or_default()
+}
+
+fn write_host_settings(path: &Path, settings: &HostSettings) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    let json = serde_json::to_vec_pretty(settings).map_err(|error| error.to_string())?;
+    fs::write(path, json).map_err(|error| format!("Could not save instance mode: {error}"))
+}
+
+fn settings_script(settings: &HostSettings) -> String {
+    format!("window.__hostSettings({})", serde_json::to_string(settings).unwrap())
 }
 
 fn validate_markdown(value: &Path, cwd: &Path) -> Result<PathBuf, String> {
@@ -206,7 +250,7 @@ fn image_response(request: &Request<Vec<u8>>) -> Response<Cow<'static, [u8]>> {
     }
 }
 
-fn try_forward_to_existing(paths: &[PathBuf]) -> bool {
+fn try_forward_to_existing(paths: &[PathBuf], port: u16) -> bool {
     let payload = match serde_json::to_vec(
         &paths
             .iter()
@@ -217,7 +261,7 @@ fn try_forward_to_existing(paths: &[PathBuf]) -> bool {
         Err(_) => return false,
     };
     for _ in 0..40 {
-        if let Ok(mut stream) = TcpStream::connect(("127.0.0.1", INSTANCE_PORT)) {
+        if let Ok(mut stream) = TcpStream::connect(("127.0.0.1", port)) {
             if stream.write_all(INSTANCE_MAGIC).is_ok() && stream.write_all(&payload).is_ok() {
                 return true;
             }
@@ -227,8 +271,8 @@ fn try_forward_to_existing(paths: &[PathBuf]) -> bool {
     false
 }
 
-fn bind_instance_listener() -> std::io::Result<TcpListener> {
-    TcpListener::bind(("127.0.0.1", INSTANCE_PORT))
+fn bind_instance_listener(port: u16) -> std::io::Result<TcpListener> {
+    TcpListener::bind(("127.0.0.1", port))
 }
 
 fn start_instance_listener(listener: TcpListener, proxy: EventLoopProxy<UserEvent>) {
@@ -563,6 +607,7 @@ fn notify(webviews: &mut HashMap<WindowId, (Window, WebView)>, id: WindowId, scr
 fn load_document_in_window(
     webviews: &mut HashMap<WindowId, (Window, WebView)>,
     current_documents: &mut HashMap<WindowId, PathBuf>,
+    pending: &mut HashMap<WindowId, Option<DocumentPayload>>,
     id: WindowId,
     requested: &Path,
     cwd: &Path,
@@ -575,16 +620,27 @@ fn load_document_in_window(
     if let Some((window, _)) = webviews.get(&id) {
         window.set_title(&window_title(Some(&document)));
     }
-    let json = serde_json::to_string(&document).map_err(|error| error.to_string())?;
-    notify(webviews, id, &format!("window.__hostLoad({json})"));
+    if let Some(initial) = pending.get_mut(&id) {
+        // The page may still be starting when another file is forwarded.
+        *initial = Some(document);
+    } else {
+        notify(webviews, id, &navigate_script(&document, None));
+    }
     Ok(())
 }
 fn main() -> wry::Result<()> {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let requested: Vec<PathBuf> = std::env::args_os().skip(1).map(PathBuf::from).collect();
-    let instance_listener = match bind_instance_listener() {
+    let settings_path = host_settings_path();
+    let mut host_settings = read_host_settings(&settings_path);
+    let test_mode = std::env::var("MARKDOWN_VIEWER_TEST_MODE").as_deref() == Ok("1");
+    let instance_port = std::env::var("MARKDOWN_VIEWER_INSTANCE_PORT").ok()
+        .and_then(|value| value.parse::<u16>().ok())
+        .filter(|port| *port != 0)
+        .unwrap_or(INSTANCE_PORT);
+    let instance_listener = match bind_instance_listener(instance_port) {
         Ok(listener) => Some(listener),
-        Err(_) if try_forward_to_existing(&requested) => return Ok(()),
+        Err(_) if try_forward_to_existing(&requested, instance_port) => return Ok(()),
         Err(_) => None,
     };
     let mut rejected = Vec::new();
@@ -601,14 +657,14 @@ fn main() -> wry::Result<()> {
     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
     let proxy = event_loop.create_proxy();
     let updater = UpdateManager::new(updater_config());
-    let _ = start_update_check(&updater, &proxy);
+    if !test_mode { let _ = start_update_check(&updater, &proxy); }
     let mut current_update: Option<UpdateStatus> = None;
     let mut webviews = HashMap::new();
     let mut pending = HashMap::new();
     let mut current_documents: HashMap<WindowId, PathBuf> = HashMap::new();
     let mut pending_notices: HashMap<WindowId, Vec<String>> = HashMap::new();
     #[cfg(windows)]
-    let association_error = register_association().err();
+    let association_error = if test_mode { None } else { register_association().err() };
     #[cfg(not(windows))]
     let association_error: Option<String> = None;
     if let Some(listener) = instance_listener {
@@ -623,6 +679,7 @@ fn main() -> wry::Result<()> {
     };
     let (window, webview) = create_window(&event_loop, proxy.clone(), initial.as_ref())?;
     let first_id = window.id();
+    let mut active_window = Some(first_id);
     webviews.insert(first_id, (window, webview));
     pending.insert(first_id, initial);
     if let Some(document) = pending.get(&first_id).and_then(|value| value.as_ref()) {
@@ -644,15 +701,40 @@ fn main() -> wry::Result<()> {
     event_loop.run(move |event, target, control_flow| {
         *control_flow = ControlFlow::Wait;
         match event {
+            Event::WindowEvent { event: WindowEvent::Focused(true), window_id, .. } => {
+                active_window = Some(window_id);
+            }
             Event::WindowEvent { event: WindowEvent::CloseRequested, window_id, .. } => {
                 webviews.remove(&window_id);
                 pending.remove(&window_id);
                 current_documents.remove(&window_id);
                 pending_notices.remove(&window_id);
+                if active_window == Some(window_id) { active_window = webviews.keys().next().copied(); }
                 if webviews.is_empty() { *control_flow = ControlFlow::Exit; }
             }
             Event::UserEvent(UserEvent::Open(paths)) => {
+                if paths.is_empty() {
+                    if host_settings.instance_mode == InstanceMode::Single {
+                        if let Some((window, _)) = active_window.and_then(|id| webviews.get(&id)) {
+                            window.set_focus();
+                        }
+                    } else if let Ok((window, view)) = create_window(target, proxy.clone(), None) {
+                        let id = window.id();
+                        webviews.insert(id, (window, view));
+                        pending.insert(id, None);
+                        active_window = Some(id);
+                    }
+                }
                 for requested in paths {
+                    if host_settings.instance_mode == InstanceMode::Single {
+                        if let Some(id) = active_window.filter(|id| webviews.contains_key(id)) {
+                            if let Err(error) = load_document_in_window(&mut webviews, &mut current_documents, &mut pending, id, &requested, &cwd) {
+                                notify(&mut webviews, id, &notice_script(&error, true));
+                            }
+                            if let Some((window, _)) = webviews.get(&id) { window.set_focus(); }
+                            continue;
+                        }
+                    }
                     match validate_markdown(&requested, &cwd).and_then(|path| read_document(&path)) {
                         Ok(doc) => {
                             let document_path = PathBuf::from(&doc.path);
@@ -661,6 +743,7 @@ fn main() -> wry::Result<()> {
                                 webviews.insert(id, (window, view));
                                 current_documents.insert(id, document_path);
                                 pending.insert(id, Some(doc));
+                                active_window = Some(id);
                             }
                         }
                         Err(error) => {
@@ -670,7 +753,8 @@ fn main() -> wry::Result<()> {
                 }
             }
             Event::UserEvent(UserEvent::Load(id, path)) => {
-                if let Err(error) = load_document_in_window(&mut webviews, &mut current_documents, id, &path, &cwd) {
+                active_window = Some(id);
+                if let Err(error) = load_document_in_window(&mut webviews, &mut current_documents, &mut pending, id, &path, &cwd) {
                     notify(&mut webviews, id, &notice_script(&error, true));
                 }
             }
@@ -691,11 +775,28 @@ fn main() -> wry::Result<()> {
                 let parsed: serde_json::Value = serde_json::from_str(&message).unwrap_or_default();
                 match parsed.get("type").and_then(|v| v.as_str()) {
                     Some("ready") => {
+                        notify(&mut webviews, id, &settings_script(&host_settings));
                         if let Some(payload) = pending.remove(&id).flatten() {
                             if let Ok(json) = serde_json::to_string(&payload) { notify(&mut webviews, id, &format!("window.__hostLoad({json})")); }
                         }
                         if let Some(notices) = pending_notices.remove(&id) { for script in notices { notify(&mut webviews, id, &script); } }
                         if let Some(status) = current_update.as_ref() { notify(&mut webviews, id, &update_script(status)); }
+                    }
+                    Some("instance_mode") => {
+                        let mode = parsed.get("mode").cloned()
+                            .and_then(|value| serde_json::from_value::<InstanceMode>(value).ok());
+                        if let Some(mode) = mode {
+                            let updated = HostSettings { instance_mode: mode };
+                            match write_host_settings(&settings_path, &updated) {
+                                Ok(()) => host_settings = updated,
+                                Err(error) => notify(&mut webviews, id, &notice_script(&error, true)),
+                            }
+                        } else {
+                            notify(&mut webviews, id, &notice_script("Unsupported instance mode.", true));
+                        }
+                        let script = settings_script(&host_settings);
+                        let ids: Vec<_> = webviews.keys().copied().collect();
+                        for window_id in ids { notify(&mut webviews, window_id, &script); }
                     }
                     Some("external") => { if let Some(url) = parsed.get("url").and_then(|v| v.as_str()) { let _ = open_external(url); } }
                     Some("internal") => {
@@ -777,6 +878,19 @@ fn main() -> wry::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn persists_instance_mode_and_defaults_to_single() {
+        let root = std::env::temp_dir().join(format!("markdown-viewer-settings-{}", std::process::id()));
+        let path = root.join("settings.json");
+        assert_eq!(read_host_settings(&path).instance_mode, InstanceMode::Single);
+        write_host_settings(&path, &HostSettings { instance_mode: InstanceMode::Multiple }).unwrap();
+        assert_eq!(read_host_settings(&path).instance_mode, InstanceMode::Multiple);
+        fs::write(&path, b"invalid JSON").unwrap();
+        assert_eq!(read_host_settings(&path).instance_mode, InstanceMode::Single);
+        fs::remove_dir_all(root).unwrap();
+        assert!(serde_json::from_str::<InstanceMode>("\"unsupported\"").is_err());
+    }
 
     #[test]
     fn validates_markdown_extension_and_file_type() {

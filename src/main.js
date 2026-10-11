@@ -12,10 +12,9 @@ import "./style.css";
 
 const documentRoot = document.querySelector("#document");
 const toolbar = document.querySelector(".toolbar");
+const fileNameLabel = document.querySelector(".file-name");
+const instanceModeSelect = document.querySelector("#instance-mode-select");
 const directionButton = document.querySelector("#direction-button");
-const automaticButton = document.querySelector("#automatic-button");
-const ltrButton = document.querySelector("#ltr-button");
-const directionControls = document.querySelectorAll("[data-direction]");
 const settingsAssociationButton = document.querySelector("#settings-association-button");
 const updateButton = document.querySelector("#update-button");
 const settingsButton = document.querySelector("#settings-button");
@@ -65,7 +64,6 @@ const FONT_PRESETS = {
 marked.setOptions({ gfm: true, breaks: false });
 mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "default" });
 document.title = `Markdown Viewer v${APP_VERSION}`;
-document.querySelector(".brand").textContent = `Markdown Viewer v${APP_VERSION}`;
 appVersionElement.textContent = `v${APP_VERSION}`;
 marked.use({ renderer: { code({ text, lang }) {
   const normalizedLanguage = (lang || "").trim().toLowerCase();
@@ -96,9 +94,13 @@ function showNotice(message, isError = false) {
 }
 function setDirection(direction) {
   applyDocumentDirection(documentRoot, direction);
-  directionControls.forEach((button) => {
-    button.setAttribute("aria-pressed", String(button.dataset.direction === (direction || "auto")));
-  });
+  const mode = direction || "auto";
+  const label = mode === "auto" ? "Auto" : mode.toUpperCase();
+  const next = { auto: "RTL", rtl: "LTR", ltr: "Auto" }[mode];
+  directionButton.dataset.direction = mode;
+  directionButton.textContent = label;
+  directionButton.title = `Text direction: ${label}. Click to switch to ${next}.`;
+  directionButton.setAttribute("aria-label", directionButton.title);
 }
 async function renderMermaidDiagrams() {
   const generation = ++mermaidRenderGeneration;
@@ -132,6 +134,8 @@ function renderDocument(payload, { scrollTop = 0, fragment = null } = {}) {
   delete documentRoot.dataset.manualDirection;
   setDirection(null);
   document.title = `${payload.name} — Markdown Viewer v${APP_VERSION}`;
+  fileNameLabel.textContent = payload.name || "Untitled.md";
+  fileNameLabel.title = payload.path || payload.name || "Untitled.md";
   resolveRelativeImages(payload.path);
   refreshImageGallery();
   renderMermaidDiagrams();
@@ -310,9 +314,10 @@ function setUpdateControls(state) {
   settingsUpdateButton.textContent = label;
 }
 
-directionButton.addEventListener("click", () => setDirection("rtl"));
-ltrButton.addEventListener("click", () => setDirection("ltr"));
-automaticButton.addEventListener("click", () => setDirection(null));
+directionButton.addEventListener("click", () => {
+  const next = { auto: "rtl", rtl: "ltr", ltr: null }[directionButton.dataset.direction];
+  setDirection(next);
+});
 settingsAssociationButton.addEventListener("click", () => hostMessage({ type: "register" }));
 updateButton.addEventListener("click", () => hostMessage({ type: `update_${updateAction}` }));
 settingsUpdateButton.addEventListener("click", () => updateButton.click());
@@ -322,6 +327,10 @@ printButton.addEventListener("click", () => window.print());
 editButton.addEventListener("click", () => { if (currentPayload?.path) hostMessage({ type: "edit", path: currentPayload.path }); });
 settingsButton.addEventListener("click", () => settingsDialog.showModal());
 settingsClose.addEventListener("click", closeSettings);
+instanceModeSelect.addEventListener("change", () => {
+  instanceModeSelect.disabled = true;
+  hostMessage({ type: "instance_mode", mode: instanceModeSelect.value });
+});
 githubLink.addEventListener("click", (event) => { event.preventDefault(); hostMessage({ type: "external", url: GITHUB_URL }); });
 settingsDialog.addEventListener("click", (event) => { if (event.target === settingsDialog) closeSettings(); });
 fontSelect.addEventListener("change", () => { applyViewerSettings(fontSelect.value, fontSizeInput.value); saveViewerSettings(); });
@@ -391,6 +400,11 @@ window.__hostDrop = (state, message) => {
   if (state === "reject") showNotice(message || "Only .md files are supported.", true);
 };
 window.__hostNotice = (message, isError = false) => showNotice(message, isError);
+window.__hostSettings = (settings) => {
+  if (!["single", "multiple"].includes(settings?.instanceMode)) return;
+  instanceModeSelect.value = settings.instanceMode;
+  instanceModeSelect.disabled = false;
+};
 window.__hostLoad = (payload) => {
   if (!payload) return;
   backStack.length = 0;

@@ -11,19 +11,20 @@
   </head>
   <body>
     <header class="toolbar">
-      <div class="brand">Markdown Viewer</div>
+      <div class="toolbar-left">
+        <div class="file-info">
+          <svg class="file-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg>
+          <span class="file-name" dir="auto" title="No file open">No file open</span>
+        </div>
+      </div>
       <div class="toolbar-actions">
         <button id="back-button" type="button" aria-label="Back" title="Back" disabled>←</button>
         <button id="forward-button" type="button" aria-label="Forward" title="Forward" disabled>→</button>
-        <button id="print-button" type="button" aria-label="Print document" title="Print document">Print</button>
-        <button id="edit-button" type="button" aria-label="Edit document" title="Open document in an editor" disabled>Edit</button>
-        <div class="direction-controls" role="group" aria-label="Document direction">
-          <button id="automatic-button" type="button" data-direction="auto" aria-pressed="true" title="Automatic paragraph direction">Auto</button>
-          <button id="direction-button" type="button" data-direction="rtl" aria-pressed="false" title="Force right-to-left direction">RTL</button>
-          <button id="ltr-button" type="button" data-direction="ltr" aria-pressed="false" title="Force left-to-right direction">LTR</button>
-        </div>
+        <button id="print-button" type="button" aria-label="Print document" title="Print document"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v7H6zM18 12h.01"/></svg><span>Print</span></button>
+        <button id="edit-button" type="button" aria-label="Edit document" title="Open document in an editor" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6zM14 5l5 5"/></svg><span>Edit</span></button>
         <button id="update-button" type="button" title="Update available" hidden>Update</button>
-        <button id="settings-button" type="button" aria-label="Open settings" title="Settings">⚙</button>
+        <button id="direction-button" type="button" data-direction="auto" aria-label="Text direction: Auto. Click to switch to RTL." title="Text direction: Auto. Click to switch to RTL.">Auto</button>
+        <button id="settings-button" class="icon-button" type="button" aria-label="Open settings" title="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1z"/><circle cx="12" cy="12" r="3"/></svg></button>
       </div>
     </header>
     <main id="document" class="markdown-body" aria-live="polite">
@@ -49,6 +50,13 @@
         </select>
         <label for="font-size-input">Font size <output id="font-size-value">16px</output></label>
         <input id="font-size-input" type="range" min="12" max="32" step="1" value="16" />
+        <div class="settings-divider"></div>
+        <label for="instance-mode-select">Instance mode</label>
+        <select id="instance-mode-select" aria-describedby="instance-mode-help" disabled>
+          <option value="single">Single instance — reuse the current window</option>
+          <option value="multiple">Multiple instances — open a new window</option>
+        </select>
+        <p id="instance-mode-help" class="settings-help">Single opens the next file in your active window. Multiple opens each file in its own window. Applies immediately to double-click and Open with.</p>
         <div class="settings-divider"></div>
         <label>File association</label>
         <button id="settings-association-button" type="button">Set as default .md file viewer</button>

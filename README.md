@@ -9,11 +9,11 @@ The desktop shell is a small Rust application using [`wry`](https://github.com/t
 ## Features
 
 - Open `.md` files from the command line, Windows **Open with**, or double-click.
-- Forward launches to the existing process while opening each document in its own window.
+- Choose Single instance to reuse the active window, or Multiple instances to open each document in a separate window.
 - Drag and drop Markdown files anywhere in the window.
 - Fixed toolbar stays visible while scrolling.
 - Automatic paragraph direction using Unicode bidirectional classification.
-- Auto/RTL/LTR direction controls with a highlighted active mode; forced direction also applies to English-first paragraphs and lines.
+- A direction button on the right cycles through Auto, RTL, and LTR and shows the active mode; forced direction also applies to English-first paragraphs and lines.
 - Embedded Vazirmatn Persian/Arabic font with system fallbacks for reliable Unicode rendering.
 - GitHub-style Markdown, fenced-code highlighting, and sanitized HTML.
 - Mermaid code fences using the `mermaid` language are rendered as SVG with strict security.
@@ -21,10 +21,17 @@ The desktop shell is a small Rust application using [`wry`](https://github.com/t
 - Clickable images open in a keyboard-navigable gallery/lightbox with previous/next controls.
 - External HTTP(S) links opened in the system browser.
 - Relative Markdown links and Obsidian wiki links (`[[Note]]`, aliases, headings) open in the current window with Back/Forward history.
-- Settings dialog for font family, font size, file association, and update actions.
+- Settings dialog for font family, font size, instance mode, file association, and update actions.
 - Print the current Markdown document with a print-optimized layout.
 - Edit the current document with VS Code when available, or the Windows Notepad fallback.
 - Single portable executable; no installer is required.
+
+## Version 0.4.6
+
+- Refreshed toolbar with compact controls and the current filename on the left.
+- One direction button on the right cycles through Auto, RTL, and LTR and displays the active mode.
+- Settings now includes a persistent Single/Multiple instance mode: reuse the active window or open separate document windows.
+- Opening another file in Single mode preserves Back/Forward history, and early file-forwarding requests wait for the page to be ready.
 
 ## Version 0.4.5
 
@@ -92,7 +99,16 @@ Open a document directly:
 .\webview2-viewer\target\release\markdown-viewer.exe .\README.md
 ```
 
-You can also drop one or more `.md` files onto any viewer window. A second launch forwards its paths to the first process instead of creating a duplicate process.
+You can also drop one or more `.md` files onto any viewer window. A second launch forwards its paths to the running viewer; the selected instance mode determines which window opens them.
+
+## Instance mode
+
+Choose **Settings → Instance mode**:
+
+- **Single instance** (default): the next file opens in the active window, with Back/Forward history. Launching the EXE without a file focuses that window.
+- **Multiple instances**: each opened file gets its own window. Launching the EXE without a file opens an empty window.
+
+The preference is saved on your computer and takes effect immediately for double-click and Open with. Existing windows stay open when you change modes. The toolbar shows the current filename on the left. A single button on the right shows the active direction and cycles through **Auto → RTL → LTR → Auto** when clicked.
 
 ## File association
 
