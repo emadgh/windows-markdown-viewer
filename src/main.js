@@ -61,7 +61,7 @@ const FONT_PRESETS = {
   consolas: 'Consolas, "Cascadia Mono", "Vazirmatn", monospace',
 };
 
-marked.setOptions({ gfm: true, breaks: false });
+marked.setOptions({ gfm: true, breaks: true });
 mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: "default" });
 document.title = `Markdown Viewer v${APP_VERSION}`;
 appVersionElement.textContent = `v${APP_VERSION}`;

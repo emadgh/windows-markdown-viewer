@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { createServer } from "node:net";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 
@@ -169,6 +169,48 @@ try {
   await evaluate(`window.__hostLoad(${JSON.stringify({ path: readme, name: "README.md", contents })})`);
   assert.equal(await evaluate("document.querySelector('#direction-button').dataset.direction"), "auto");
   console.log("PASS new document resets to Auto");
+  for (const ending of ["\n", "\r\n", "\r"]) {
+    const fence = String.fromCharCode(96).repeat(3);
+    const multiline = {
+      path: readme, name: "Line breaks.md",
+      contents: ["First entry", "Second entry", "Third entry", "", `${fence}text`, "code line 1", "code line 2", fence].join(ending),
+    };
+    await evaluate(`window.__hostLoad(${JSON.stringify(multiline)})`);
+    const lines = await evaluate(`(() => {
+      const p = document.querySelector('#document p');
+      const tops = [...p.childNodes].filter(n => n.nodeType === Node.TEXT_NODE && n.textContent.trim()).map(n => {
+        const r = document.createRange(); r.selectNodeContents(n); return r.getBoundingClientRect().top;
+      });
+      return { breaks: p.querySelectorAll('br').length, tops, code: document.querySelector('pre code').textContent, codeBreaks: document.querySelectorAll('pre code br').length };
+    })()`);
+    assert.equal(lines.breaks, 2, "Plain newlines must create visible line breaks");
+    assert.equal(lines.tops.length, 3);
+    assert.ok(lines.tops.every((top, i) => i === 0 || top > lines.tops[i - 1]), "Each entry must occupy a separate visible row");
+    assert.ok(lines.code.includes("code line 1\ncode line 2"));
+    assert.equal(lines.codeBreaks, 0, "Code blocks must preserve their original text newlines");
+  }
+  console.log("PASS LF, CRLF, and CR newlines with intact code blocks");
+  await evaluate(`window.__hostLoad(${JSON.stringify({ path: readme, name: "README.md", contents })})`);
+  if (process.argv[4]) {
+    const sample = resolve(process.argv[4]);
+    await forwardFile(sample);
+    await waitFor(`document.querySelector('.file-name').textContent === ${JSON.stringify(basename(sample))}`);
+    const paragraphs = await evaluate(`(() => [...document.querySelectorAll('#document p')].map(p => {
+      const tops = [...p.childNodes].filter(n => n.nodeType === Node.TEXT_NODE && n.textContent.trim()).map(n => {
+        const r = document.createRange(); r.selectNodeContents(n); return r.getBoundingClientRect().top;
+      });
+      return { breaks: p.querySelectorAll('br').length, tops };
+    }))()`);
+    assert.ok(paragraphs.length > 0);
+    assert.ok(paragraphs.every(p => p.tops.length > 1 && p.breaks === p.tops.length - 1 && p.tops.every((top, i) => i === 0 || top > p.tops[i - 1])), "Every entry in the supplied multiline file must render on its own row");
+    console.log(`PASS supplied file ${sample}: ${paragraphs.length} multiline paragraphs render on separate rows`);
+    if (process.argv[3]) {
+      const screenshot = await call("Page.captureScreenshot", { format: "png" });
+      await writeFile(resolve(process.argv[3]), Buffer.from(screenshot.data, "base64"));
+    }
+    await evaluate("document.querySelector('#back-button').click()");
+    assert.equal(await evaluate("document.querySelector('.file-name').textContent"), "README.md");
+  }
   await forwardFile(nativeSecond);
   await waitFor("document.querySelector('.file-name').textContent === 'Second document.md'");
   assert.equal((await viewerTargets()).length, 1, "Single mode must reuse the existing window");

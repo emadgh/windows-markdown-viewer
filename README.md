@@ -26,6 +26,10 @@ The desktop shell is a small Rust application using [`wry`](https://github.com/t
 - Edit the current document with VS Code when available, or the Windows Notepad fallback.
 - Single portable executable; no installer is required.
 
+## Version 0.4.7
+
+- Markdown single newlines now render as visible line breaks, including files with Windows CRLF line endings.
+
 ## Version 0.4.6
 
 - Refreshed toolbar with compact controls and the current filename on the left.
