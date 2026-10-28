@@ -5,6 +5,7 @@ import "highlight.js/styles/github-dark.css";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import mermaid from "mermaid";
+import { toBlob } from "html-to-image";
 import hljs from "highlight.js";
 import { applyDocumentDirection } from "./direction.js";
 import { parseObsidianHref, rewriteObsidianLinks } from "./obsidian.js";
@@ -29,6 +30,13 @@ const fontSizeValue = document.querySelector("#font-size-value");
 const backButton = document.querySelector("#back-button");
 const forwardButton = document.querySelector("#forward-button");
 const printButton = document.querySelector("#print-button");
+const imageButton = document.querySelector("#image-button");
+const imageButtonLabel = document.querySelector("#image-button-label");
+const imageExportDialog = document.querySelector("#image-export-dialog");
+const imageExportStatus = document.querySelector("#image-export-status");
+const imageExportClose = document.querySelector("#image-export-close");
+const saveImageButton = document.querySelector("#save-image-button");
+const copyImageButton = document.querySelector("#copy-image-button");
 const editButton = document.querySelector("#edit-button");
 const overlay = document.querySelector("#drop-overlay");
 const notice = document.querySelector("#notice");
@@ -40,8 +48,12 @@ const lightboxClose = document.querySelector("#lightbox-close");
 const lightboxPrevious = document.querySelector("#lightbox-previous");
 const lightboxNext = document.querySelector("#lightbox-next");
 let mermaidRenderGeneration = 0;
+let mermaidRenderPromise = Promise.resolve();
 let updateAction = "check";
 let currentPayload = null;
+let readyImageBlob = null;
+let readyImageName = null;
+let imageExportInProgress = false;
 let galleryImages = [];
 let lightboxIndex = 0;
 let lightboxPreviousFocus = null;
@@ -138,7 +150,7 @@ function renderDocument(payload, { scrollTop = 0, fragment = null } = {}) {
   fileNameLabel.title = payload.path || payload.name || "Untitled.md";
   resolveRelativeImages(payload.path);
   refreshImageGallery();
-  renderMermaidDiagrams();
+  mermaidRenderPromise = renderMermaidDiagrams();
   window.requestAnimationFrame(() => {
     if (fragment) {
       if (scrollToFragment(fragment)) return;
@@ -212,6 +224,129 @@ function stepLightbox(delta) {
 }
 function updateEditButton() {
   editButton.disabled = !currentPayload?.path;
+  imageButton.disabled = !currentPayload;
+}
+function sanitizedPngName(documentName) {
+  const stem = (documentName || "Markdown document").replace(/\.[^.]+$/, "");
+  const safe = stem.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_").replace(/[. ]+$/g, "").trim().slice(0, 120);
+  return `${safe || "Markdown document"}.png`;
+}
+function waitForImage(image) {
+  if (image.complete) return image.decode?.().catch(() => {}) ?? Promise.resolve();
+  return new Promise((resolve) => {
+    image.addEventListener("load", resolve, { once: true });
+    image.addEventListener("error", resolve, { once: true });
+  }).then(() => image.decode?.().catch(() => {}));
+}
+async function prepareDocumentImage() {
+  if (!currentPayload || imageExportInProgress) return;
+  imageExportInProgress = true;
+  imageButton.disabled = true;
+  imageButtonLabel.textContent = "Preparing…";
+  const sourcePayload = currentPayload;
+  let stage;
+  try {
+    await mermaidRenderPromise;
+    await document.fonts?.ready;
+    await Promise.all([...documentRoot.querySelectorAll("img")].map(waitForImage));
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    if (currentPayload !== sourcePayload) throw new Error("The open document changed. Try exporting again.");
+
+    const rootStyle = getComputedStyle(documentRoot);
+    const contentWidth = Math.ceil(Math.max(documentRoot.getBoundingClientRect().width, documentRoot.scrollWidth));
+    const clone = documentRoot.cloneNode(true);
+    Object.assign(clone.style, { width: `${contentWidth}px`, maxWidth: "none", minHeight: "0", height: "auto", margin: "0" });
+    clone.removeAttribute("aria-live");
+    stage = document.createElement("div");
+    stage.setAttribute("aria-hidden", "true");
+    Object.assign(stage.style, {
+      position: "fixed", left: "0", top: "100vh", zIndex: "-1", display: "block",
+      boxSizing: "border-box", width: `${contentWidth + 80}px`, height: "auto",
+      overflow: "visible",
+    });
+    const surface = document.createElement("div");
+    Object.assign(surface.style, {
+      display: "flow-root", boxSizing: "border-box", width: "100%", padding: "40px",
+      backgroundColor: rootStyle.backgroundColor, color: rootStyle.color, fontFamily: rootStyle.fontFamily,
+    });
+    surface.append(clone);
+    stage.append(surface);
+    document.body.append(stage);
+
+    const width = Math.ceil(surface.getBoundingClientRect().width);
+    const height = Math.ceil(surface.getBoundingClientRect().height);
+    if (width > 32000 || height > 32000 || width * height > 160_000_000) {
+      throw new Error("This document is too large for a single image. Try a shorter document.");
+    }
+    const blob = await toBlob(surface, {
+      backgroundColor: rootStyle.backgroundColor,
+      pixelRatio: 1,
+      cacheBust: true,
+    });
+    if (!blob) throw new Error("The image could not be created.");
+    readyImageBlob = blob;
+    readyImageName = sanitizedPngName(sourcePayload.name);
+    imageExportStatus.classList.remove("error");
+    imageExportStatus.textContent = `Image ready (${width} × ${height} px). Choose where to put it.`;
+    saveImageButton.disabled = false;
+    copyImageButton.disabled = false;
+    imageExportDialog.showModal();
+    saveImageButton.focus();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    showNotice(`Could not create image: ${message}`, true);
+  } finally {
+    stage?.remove();
+    imageExportInProgress = false;
+    imageButtonLabel.textContent = "Image";
+    imageButton.disabled = !currentPayload;
+  }
+}
+function saveDocumentImage() {
+  if (!readyImageBlob || !readyImageName) return;
+  const url = URL.createObjectURL(readyImageBlob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = readyImageName;
+  link.hidden = true;
+  document.body.append(link);
+  imageExportStatus.classList.remove("error");
+  imageExportStatus.textContent = "Saving image to Downloads…";
+  saveImageButton.disabled = true;
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
+}
+async function copyDocumentImage() {
+  if (!readyImageBlob) return;
+  copyImageButton.disabled = true;
+  imageExportStatus.classList.remove("error");
+  imageExportStatus.textContent = "Copying image…";
+  try {
+    if (!navigator.clipboard?.write || typeof ClipboardItem === "undefined") {
+      throw new Error("Image clipboard is unavailable in this WebView.");
+    }
+    await navigator.clipboard.write([new ClipboardItem({ "image/png": readyImageBlob })]);
+    imageExportStatus.textContent = "Image copied to the clipboard.";
+    showNotice("Image copied to the clipboard.");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    imageExportStatus.classList.add("error");
+    imageExportStatus.textContent = `Could not copy image: ${message}`;
+    copyImageButton.disabled = false;
+  }
+}
+function finishImageDownload(success, path) {
+  if (success) {
+    imageExportStatus.classList.remove("error");
+    imageExportStatus.textContent = "Image saved to Downloads.";
+    showNotice("Image saved to Downloads.");
+    return;
+  }
+  saveImageButton.disabled = false;
+  imageExportStatus.classList.add("error");
+  imageExportStatus.textContent = "Could not save the image to Downloads. Check that the folder is available.";
+  showNotice("Could not save the image to Downloads.", true);
 }
 function updateHistoryButtons() {
   backButton.disabled = backStack.length === 0;
@@ -324,6 +459,19 @@ settingsUpdateButton.addEventListener("click", () => updateButton.click());
 backButton.addEventListener("click", goBack);
 forwardButton.addEventListener("click", goForward);
 printButton.addEventListener("click", () => window.print());
+imageButton.addEventListener("click", prepareDocumentImage);
+saveImageButton.addEventListener("click", saveDocumentImage);
+copyImageButton.addEventListener("click", copyDocumentImage);
+imageExportClose.addEventListener("click", () => imageExportDialog.close());
+imageExportDialog.addEventListener("click", (event) => { if (event.target === imageExportDialog) imageExportDialog.close(); });
+imageExportDialog.addEventListener("close", () => {
+  readyImageBlob = null;
+  readyImageName = null;
+  saveImageButton.disabled = false;
+  copyImageButton.disabled = false;
+  imageExportStatus.textContent = "";
+  imageExportStatus.classList.remove("error");
+});
 editButton.addEventListener("click", () => { if (currentPayload?.path) hostMessage({ type: "edit", path: currentPayload.path }); });
 settingsButton.addEventListener("click", () => settingsDialog.showModal());
 settingsClose.addEventListener("click", closeSettings);
@@ -413,6 +561,7 @@ window.__hostLoad = (payload) => {
 };
 window.__hostNavigate = (payload, fragment = null) => { if (payload) showPayload(payload, { fragment, record: true }); };
 window.__hostUpdate = setUpdateControls;
+window.__hostImageDownloadComplete = finishImageDownload;
 loadViewerSettings();
 updateHistoryButtons();
 showFirstRunAssociationPrompt();

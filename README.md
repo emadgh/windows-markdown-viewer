@@ -23,8 +23,15 @@ The desktop shell is a small Rust application using [`wry`](https://github.com/t
 - Relative Markdown links and Obsidian wiki links (`[[Note]]`, aliases, headings) open in the current window with Back/Forward history.
 - Settings dialog for font family, font size, instance mode, file association, and update actions.
 - Print the current Markdown document with a print-optimized layout.
+- Export the full document as a PNG with a 40px margin, then save it to Downloads or copy it to the clipboard.
 - Edit the current document with VS Code when available, or the Windows Notepad fallback.
 - Single portable executable; no installer is required.
+
+## Version 0.4.8
+
+- Fixed full-document PNG export so the generated image includes all rendered text with the requested 40px margin.
+- Added a regression check that rejects blank image exports.
+- Fixed a collision between Rust tests sharing a temporary image directory.
 
 ## Version 0.4.7
 

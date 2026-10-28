@@ -29,6 +29,13 @@ button:disabled { cursor: default; opacity: .55; }
 .error-state { color: #c83232; }
 .settings-dialog { width: min(440px, calc(100vw - 32px)); padding: 0; border: 1px solid color-mix(in srgb, CanvasText 25%, transparent); border-radius: 10px; color: CanvasText; background: Canvas; box-shadow: 0 20px 70px rgb(0 0 0 / 45%); }
 .settings-dialog::backdrop { background: rgb(0 0 0 / 45%); }
+.image-export-dialog { width: min(440px, calc(100vw - 32px)); padding: 0; border: 1px solid color-mix(in srgb, CanvasText 25%, transparent); border-radius: 10px; color: CanvasText; background: Canvas; box-shadow: 0 20px 70px rgb(0 0 0 / 45%); }
+.image-export-dialog::backdrop { background: rgb(0 0 0 / 45%); }
+.image-export-form { display: grid; gap: 14px; padding: 20px; }
+.image-export-form p { margin: 0; overflow-wrap: anywhere; }
+.image-export-form p.error { color: #c83232; }
+.image-export-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.image-export-actions button { flex: 1 1 150px; min-height: 42px; }
 .settings-form { display: grid; gap: 10px; padding: 20px; }
 .settings-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
 .settings-header h2 { margin: 0; font-size: 1.3rem; }

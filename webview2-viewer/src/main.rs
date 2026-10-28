@@ -5,6 +5,8 @@ use percent_encoding::percent_decode_str;
 use serde::{Deserialize, Serialize};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
+#[cfg(windows)]
+use std::os::windows::ffi::OsStringExt;
 use std::{
     borrow::Cow,
     collections::HashMap,
@@ -54,6 +56,7 @@ enum UserEvent {
     Load(WindowId, PathBuf),
     Drop(WindowId, DropState),
     Ipc(WindowId, String),
+    ImageDownloadCompleted(WindowId, Option<String>, bool),
     Update(UpdateStatus),
 }
 #[derive(Debug)]
@@ -301,6 +304,96 @@ fn notice_script(message: &str, is_error: bool) -> String {
     )
 }
 
+fn safe_png_filename(file_name: &str) -> String {
+    let stem = Path::new(file_name)
+        .file_stem()
+        .map(|value| value.to_string_lossy())
+        .unwrap_or_else(|| "Markdown document".into());
+    let safe_stem: String = stem
+        .chars()
+        .map(|character| {
+            if character.is_control() || "<>:\"/\\|?*".contains(character) {
+                '_'
+            } else {
+                character
+            }
+        })
+        .collect();
+    let safe_stem = safe_stem.trim_matches(|character| character == '.' || character == ' ');
+    let safe_stem = if safe_stem.is_empty() { "Markdown document" } else { safe_stem };
+    format!("{safe_stem}.png")
+}
+
+fn unique_png_path(directory: &Path, file_name: &str) -> PathBuf {
+    let safe_name = safe_png_filename(file_name);
+    let stem = Path::new(&safe_name)
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .unwrap_or("Markdown document");
+    let mut candidate = directory.join(&safe_name);
+    let mut suffix = 1;
+    while candidate.exists() {
+        candidate = directory.join(format!("{stem} ({suffix}).png"));
+        suffix += 1;
+    }
+    candidate
+}
+
+fn downloads_directory() -> Result<PathBuf, String> {
+    if std::env::var("MARKDOWN_VIEWER_TEST_MODE").as_deref() == Ok("1") {
+        if let Some(path) = std::env::var_os("MARKDOWN_VIEWER_DOWNLOADS_DIR") {
+            return Ok(PathBuf::from(path));
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        let mut path = std::ptr::null_mut();
+        let result = unsafe {
+            windows_sys::Win32::UI::Shell::SHGetKnownFolderPath(
+                &windows_sys::Win32::UI::Shell::FOLDERID_Downloads,
+                0,
+                std::ptr::null_mut(),
+                &mut path,
+            )
+        };
+        if result < 0 || path.is_null() {
+            return Err(format!("Windows could not locate Downloads (0x{:08X}).", result as u32));
+        }
+        let mut length = 0;
+        unsafe {
+            while *path.add(length) != 0 {
+                length += 1;
+            }
+        }
+        let directory = PathBuf::from(unsafe {
+            std::ffi::OsString::from_wide(std::slice::from_raw_parts(path, length))
+        });
+        unsafe { windows_sys::Win32::System::Com::CoTaskMemFree(path.cast()) };
+        Ok(directory)
+    }
+    #[cfg(not(windows))]
+    {
+        std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .map(|home| home.join("Downloads"))
+            .ok_or_else(|| "Could not locate the Downloads folder.".to_owned())
+    }
+}
+
+fn image_download_path(suggested_path: &Path) -> Result<PathBuf, String> {
+    let file_name = suggested_path
+        .file_name()
+        .ok_or_else(|| "The image filename is unavailable.".to_owned())?
+        .to_string_lossy();
+    if !file_name.to_ascii_lowercase().ends_with(".png") {
+        return Err("Only PNG image downloads are supported.".into());
+    }
+    let directory = downloads_directory()?;
+    fs::create_dir_all(&directory).map_err(|error| format!("Could not open Downloads: {error}"))?;
+    Ok(unique_png_path(&directory, &file_name))
+}
+
 fn resolve_internal_link_mode(
     source: &Path,
     href: &str,
@@ -506,12 +599,32 @@ fn create_window(
     let id = window.id();
     let ipc_proxy = proxy.clone();
     let drop_proxy = proxy.clone();
+    let download_proxy = proxy.clone();
     let builder = WebViewBuilder::new()
         .with_url("mv-app://localhost/index.html")
         .with_custom_protocol("mv-app".into(), |_id, request| app_response(&request))
         .with_custom_protocol("mv-image".into(), |_id, request| image_response(&request))
         .with_ipc_handler(move |request: Request<String>| {
             let _ = ipc_proxy.send_event(UserEvent::Ipc(id, request.body().clone()));
+        })
+        .with_clipboard(true)
+        .with_download_started_handler(|url, path| {
+            if !url.starts_with("blob:") {
+                return false;
+            }
+            match image_download_path(path) {
+                Ok(download_path) => {
+                    *path = download_path;
+                    true
+                }
+                Err(_) => false,
+            }
+        })
+        .with_download_completed_handler(move |url, path, success| {
+            if url.starts_with("blob:") {
+                let path = path.map(|value| value.to_string_lossy().into_owned());
+                let _ = download_proxy.send_event(UserEvent::ImageDownloadCompleted(id, path, success));
+            }
         })
         .with_drag_drop_handler(move |event| {
             let state = match event {
@@ -865,6 +978,12 @@ fn main() -> wry::Result<()> {
                     _ => {}
                 }
             }
+            Event::UserEvent(UserEvent::ImageDownloadCompleted(id, path, success)) => {
+                if webviews.contains_key(&id) {
+                    let path = serde_json::to_string(&path).unwrap_or_else(|_| "null".into());
+                    notify(&mut webviews, id, &format!("window.__hostImageDownloadComplete({success}, {path})"));
+                }
+            }
             Event::UserEvent(UserEvent::Update(status)) => {
                 current_update = Some(status.clone());
                 let script = update_script(&status);
@@ -878,6 +997,22 @@ fn main() -> wry::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn image_download_names_are_safe_and_never_overwrite() {
+        let root = std::env::temp_dir().join(format!("markdown-viewer-download-image-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        assert_eq!(safe_png_filename("Bad:name?.md.png"), "Bad_name_.md.png");
+        assert_eq!(safe_png_filename("...png"), "Markdown document.png");
+
+        let first = unique_png_path(&root, "README.png");
+        assert_eq!(first.file_name().unwrap(), "README.png");
+        fs::write(&first, b"existing image").unwrap();
+        let second = unique_png_path(&root, "README.png");
+        assert_eq!(second.file_name().unwrap(), "README (1).png");
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn persists_instance_mode_and_defaults_to_single() {

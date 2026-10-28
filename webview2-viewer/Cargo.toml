@@ -1,6 +1,6 @@
 [package]
 name = "markdown-viewer"
-version = "0.4.7"
+version = "0.4.8"
 edition = "2021"
 build = "build.rs"
 
@@ -15,6 +15,7 @@ wry = { version = "0.55.1", features = ["protocol"] }
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell"] }
 update-via-github = { git = "https://github.com/emadgh/update-via-github.git", rev = "ec648957782ab800e14ddc6e0a15c694a46f1252" }
 
 [build-dependencies]

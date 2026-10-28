@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { createServer } from "node:net";
 import { basename, resolve } from "node:path";
@@ -29,6 +29,7 @@ const testEnvironment = {
   WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
   WEBVIEW2_USER_DATA_FOLDER: resolve(temporary, "webview"),
   MARKDOWN_VIEWER_CONFIG_DIR: temporary,
+  MARKDOWN_VIEWER_DOWNLOADS_DIR: resolve(temporary, "downloads"),
   MARKDOWN_VIEWER_INSTANCE_PORT: String(instancePort),
   MARKDOWN_VIEWER_TEST_MODE: "1",
 };
@@ -68,8 +69,8 @@ async function forwardFile(path) {
   });
   assert.equal(result, 0);
 }
-async function waitFor(expression) {
-  for (let attempt = 0; attempt < 100; attempt++) {
+async function waitFor(expression, attempts = 100) {
+  for (let attempt = 0; attempt < attempts; attempt++) {
     if (await evaluate(expression)) return;
     await delay(100);
   }
@@ -129,6 +130,43 @@ try {
     await writeFile(resolve(process.argv[3]), Buffer.from(screenshot.data, "base64"));
   }
   console.log("PASS README screenshot", imageState.images[0]);
+  assert.equal(await evaluate("document.querySelector('#image-button').disabled"), false);
+  await evaluate("document.querySelector('#image-button').click()");
+  await waitFor("document.querySelector('#image-export-dialog').open && document.querySelector('#image-export-status').textContent.startsWith('Image ready')", 300);
+  const readyText = await evaluate("document.querySelector('#image-export-status').textContent");
+  const dimensions = readyText.match(/Image ready \((\d+) × (\d+) px\)/);
+  assert.ok(dimensions, `Export dialog must report PNG dimensions: ${readyText}`);
+  const viewportHeight = await evaluate("document.documentElement.clientHeight");
+  assert.ok(Number(dimensions[2]) > viewportHeight * 2, "The export must contain the full README, not just the viewport");
+  assert.match(readyText, /Choose where to put it/);
+  assert.equal(await evaluate("!document.querySelector('#save-image-button').disabled && !document.querySelector('#copy-image-button').disabled"), true);
+  const clipboardAvailable = await evaluate("typeof navigator.clipboard?.write === 'function' && typeof ClipboardItem === 'function'");
+  assert.equal(clipboardAvailable, true, "WebView2 must expose PNG clipboard writing");
+  await evaluate(`(() => {
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { write: async items => {
+      const image = await items[0].getType('image/png');
+      window.__testCopiedImage = { mime: items[0].types[0], size: image.size };
+    } } });
+  })()`);
+  await evaluate("document.querySelector('#copy-image-button').click()");
+  await waitFor("document.querySelector('#image-export-status').textContent === 'Image copied to the clipboard.'");
+  const copied = await evaluate("window.__testCopiedImage");
+  assert.equal(copied.mime, "image/png");
+  assert.ok(copied.size > 0);
+  console.log("PASS full-document PNG creation and clipboard action");
+  await evaluate("document.querySelector('#save-image-button').click()");
+  await waitFor("document.querySelector('#image-export-status').textContent === 'Image saved to Downloads.'", 100);
+  const downloadDirectory = resolve(temporary, "downloads");
+  const downloadNames = await readdir(downloadDirectory);
+  assert.deepEqual(downloadNames, ["README.png"]);
+  const png = await readFile(resolve(downloadDirectory, "README.png"));
+  if (process.argv[5]) await writeFile(resolve(process.argv[5]), png);
+  assert.deepEqual([...png.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);
+  assert.ok(png.length > 250_000, `The full README PNG should contain rendered text, got only ${png.length} bytes`);
+  assert.equal(png.readUInt32BE(16), Number(dimensions[1]));
+  assert.equal(png.readUInt32BE(20), Number(dimensions[2]));
+  console.log(`PASS nonblank README PNG saved to Downloads with full dimensions ${dimensions[1]} × ${dimensions[2]}`);
+  await evaluate("document.querySelector('#image-export-close').click()");
   await evaluate("document.querySelector('#document img').click()");
   await delay(200);
   assert.equal(await evaluate("!document.querySelector('#image-lightbox').hidden && document.querySelector('#lightbox-image').naturalWidth > 0"), true);
