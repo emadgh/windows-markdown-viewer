@@ -6,7 +6,7 @@ on:
       tag:
         description: Release tag to build
         required: true
-        default: v0.4.8
+        default: v0.4.9
   push:
     tags:
       - "v*"

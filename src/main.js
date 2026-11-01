@@ -238,7 +238,8 @@ function waitForImage(image) {
     image.addEventListener("error", resolve, { once: true });
   }).then(() => image.decode?.().catch(() => {}));
 }
-async function prepareDocumentImage() {
+async function prepareDocumentImage(event) {
+  const download = Boolean(event?.ctrlKey);
   if (!currentPayload || imageExportInProgress) return;
   imageExportInProgress = true;
   imageButton.disabled = true;
@@ -290,8 +291,8 @@ async function prepareDocumentImage() {
     imageExportStatus.textContent = `Image ready (${width} × ${height} px). Choose where to put it.`;
     saveImageButton.disabled = false;
     copyImageButton.disabled = false;
-    imageExportDialog.showModal();
-    saveImageButton.focus();
+    if (download) saveDocumentImage();
+    else await copyDocumentImage();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     showNotice(`Could not create image: ${message}`, true);
@@ -333,6 +334,7 @@ async function copyDocumentImage() {
     const message = error instanceof Error ? error.message : String(error);
     imageExportStatus.classList.add("error");
     imageExportStatus.textContent = `Could not copy image: ${message}`;
+    showNotice(`Could not copy image: ${message}`, true);
     copyImageButton.disabled = false;
   }
 }
