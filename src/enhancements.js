@@ -16,6 +16,6 @@ document.addEventListener("paste", (event) => {
     path: "",
     name: "Clipboard.md",
     contents: markdown,
-  });
+  }, { preserveDirection: true });
   window.__hostNotice?.("Rendered Markdown from the clipboard.");
 });

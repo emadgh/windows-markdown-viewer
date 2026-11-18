@@ -196,6 +196,14 @@ try {
       assert.ok(state.blocks.every((block) => block.bidi === "plaintext"));
     }
     console.log(`PASS ${mode} direction and active button`);
+    const pasted = await evaluate(`(() => {
+      const clipboardData = new DataTransfer();
+      clipboardData.setData('text/plain', 'English text');
+      document.body.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
+      return [document.querySelector('.file-name').textContent, document.querySelector('#direction-button').dataset.direction, document.querySelector('#document p').dir];
+    })()`);
+    assert.deepEqual(pasted, ["Clipboard.md", mode, mode === "auto" ? "ltr" : mode]);
+    await evaluate(`window.__hostLoad(${JSON.stringify(fixture)}, { preserveDirection: true })`);
   }
   await evaluate("document.querySelector('#direction-button').click()");
   await evaluate(`window.__hostLoad(${JSON.stringify({ path: readme, name: "README.md", contents })})`);

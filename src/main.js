@@ -137,14 +137,12 @@ function scrollToPosition(top) {
   document.documentElement.scrollTop = top;
   document.body.scrollTop = top;
 }
-function renderDocument(payload, { scrollTop = 0, fragment = null } = {}) {
+function renderDocument(payload, { scrollTop = 0, fragment = null, direction = null } = {}) {
   closeLightbox();
   const rawHtml = marked.parse(rewriteObsidianLinks(payload.contents));
   const safeHtml = DOMPurify.sanitize(rawHtml, { USE_PROFILES: { html: true }, ADD_ATTR: ["target"] });
   documentRoot.innerHTML = safeHtml;
-  documentRoot.removeAttribute("dir");
-  delete documentRoot.dataset.manualDirection;
-  setDirection(null);
+  setDirection(direction);
   document.title = `${payload.name} — Markdown Viewer v${APP_VERSION}`;
   fileNameLabel.textContent = payload.name || "Untitled.md";
   fileNameLabel.title = payload.path || payload.name || "Untitled.md";
@@ -357,14 +355,14 @@ function updateHistoryButtons() {
 function snapshot() {
   return currentPayload ? { payload: currentPayload, scrollTop: window.scrollY || document.documentElement.scrollTop || 0 } : null;
 }
-function showPayload(payload, { record = true, fragment = null, scrollTop = 0 } = {}) {
+function showPayload(payload, { record = true, fragment = null, scrollTop = 0, direction = null } = {}) {
   if (record && currentPayload) {
     backStack.push(snapshot());
     forwardStack.length = 0;
   }
   currentPayload = payload;
   updateEditButton();
-  renderDocument(payload, { fragment, scrollTop });
+  renderDocument(payload, { fragment, scrollTop, direction });
   updateHistoryButtons();
 }
 function goBack() {
@@ -555,11 +553,12 @@ window.__hostSettings = (settings) => {
   instanceModeSelect.value = settings.instanceMode;
   instanceModeSelect.disabled = false;
 };
-window.__hostLoad = (payload) => {
+window.__hostLoad = (payload, { preserveDirection = false } = {}) => {
   if (!payload) return;
   backStack.length = 0;
   forwardStack.length = 0;
-  showPayload(payload, { record: false });
+  const direction = preserveDirection ? documentRoot.getAttribute("dir") : null;
+  showPayload(payload, { record: false, direction });
 };
 window.__hostNavigate = (payload, fragment = null) => { if (payload) showPayload(payload, { fragment, record: true }); };
 window.__hostUpdate = setUpdateControls;
