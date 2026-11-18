@@ -27,6 +27,10 @@ The desktop shell is a small Rust application using [`wry`](https://github.com/t
 - Edit the current document with VS Code when available, or the Windows Notepad fallback.
 - Single portable executable; no installer is required.
 
+## Version 0.4.10
+
+- Pasting Markdown preserves the selected Auto, RTL, or LTR direction.
+
 ## Version 0.4.9
 
 - Click Image to copy the full document as a PNG; Ctrl+Click saves it directly to Downloads.
